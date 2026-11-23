@@ -1,0 +1,80 @@
+'use strict';
+// Plain-Node tests for the planning engine: `npm test`
+const assert = require('assert');
+const E = require('../src/engine');
+
+const today = '2026-11-25'; // a Wednesday
+const wk = E.monday(today);
+assert.strictEqual(wk, '2026-11-23');
+assert.strictEqual(E.addDays('2026-03-28', 2), '2026-03-30'); // across daylight saving change
+
+const db = E.freshDb();
+const P = (id, name, extra = {}) => db.products.push({ id, name, unit: 'g', packSize: 500, min: 0, emergencyQty: 0, barcodes: [], ...extra });
+P('pasta', 'Pasta', { min: 500 });
+P('spin', 'Spinach', { unit: 'pcs', packSize: 1 });
+P('beans', 'Tinned beans', { unit: 'tin', packSize: 1, emergencyQty: 4 });
+P('water', 'Water', { unit: 'l', packSize: 6, water: true, emergencyQty: 63 });
+db.lots.push(
+  { id: 'l1', productId: 'pasta', qty: 800, bb: '2027-05-01', locationId: 'pantry1' },
+  { id: 'l2', productId: 'spin', qty: 1, bb: '2026-11-26', locationId: 'fridge' },
+  { id: 'l3', productId: 'beans', qty: 4, bb: '2027-01-10', locationId: 'reserve' }, // inside the 60-day window
+  { id: 'l4', productId: 'water', qty: 30, bb: '2028-01-01', locationId: 'reserve' }
+);
+db.recipes.push(
+  { id: 'r1', name: 'Spinach pasta', servings: 3, ingredients: [{ productId: 'pasta', qty: 400 }, { productId: 'spin', qty: 1 }] },
+  { id: 'r2', name: 'Plain pasta', servings: 3, ingredients: [{ productId: 'pasta', qty: 500 }] },
+  { id: 'r3', name: 'Bean stew', servings: 3, emergency: true, ingredients: [{ productId: 'beans', qty: 2 }] }
+);
+E.ensureWeek(db, wk);
+
+// Suggestions: the spinach (due tomorrow) and the rotating emergency beans come first.
+const picks = E.suggest(db, today, wk);
+assert.ok(picks.length >= 2, 'should suggest meals');
+assert.strictEqual(picks[0].recipeId, 'r1', 'spinach pasta first: spinach is due tomorrow');
+assert.ok(picks.some(p => p.recipeId === 'r3' && p.rotate), 'emergency stew suggested for rotation');
+
+// Plan two pasta meals: the second one lacks pasta (800 g for 900 g needed).
+for (const r of ['r1', 'r2']) db.plan.push({ id: 'e' + r, week: wk, recipeId: r, servings: 3, status: 'planned', order: db.plan.length });
+let d = E.compute(db, today);
+assert.deepStrictEqual(d.entries.er1.missing, []);
+assert.strictEqual(d.entries.er2.missing[0].qty, 100);
+assert.strictEqual(d.stock.pasta.free, 0);
+
+// Not confirmed: missing items are not on the list yet, but below-minimum pasta is.
+E.syncAuto(db, today, d);
+let pasta = db.shopping.find(s => s.productId === 'pasta');
+assert.strictEqual(pasta.qty, 500, 'one pack for minimum stock');
+// Emergency restock: beans inside the rotation window don't count, water is short.
+assert.strictEqual(db.shopping.find(s => s.productId === 'beans').qty, 4);
+assert.strictEqual(db.shopping.find(s => s.productId === 'water').qty, 33);
+
+// Confirm the week: the missing 100 g is added to the pasta line.
+db.weeks[wk].confirmed = true;
+d = E.compute(db, today); E.syncAuto(db, today, d);
+pasta = db.shopping.find(s => s.productId === 'pasta');
+assert.strictEqual(pasta.qty, 600);
+assert.strictEqual(db.shopping.filter(s => s.productId === 'pasta').length, 1, 'no duplicate lines');
+
+// Ticking it off as bought removes the need for a second line.
+pasta.done = true; d = E.compute(db, today); E.syncAuto(db, today, d);
+assert.strictEqual(db.shopping.filter(s => s.productId === 'pasta').length, 1);
+
+// Carry-over: next Monday, the uncooked meals move to the new week, first in line.
+const nextMon = E.addDays(wk, 7);
+db.plan.push({ id: 'new', week: nextMon, recipeId: 'r2', servings: 3, status: 'planned', order: 0 });
+E.carryOver(db, nextMon);
+const order = db.plan.filter(e => e.week === nextMon).sort((a, b) => a.order - b.order).map(e => e.id);
+assert.deepStrictEqual(order, ['er1', 'er2', 'new']);
+assert.ok(db.plan.find(e => e.id === 'er1').carried);
+
+// Dates: an 'out' day is skipped.
+E.ensureWeek(db, nextMon).days[0] = 'out';
+const dates = E.assignDates(db, nextMon);
+assert.strictEqual(dates.er1, E.addDays(nextMon, 1));
+
+// Emergency coverage: 4 tins = 2 stews = 6 servings; need 3 people × 3 meals × 7 days = 63.
+d = E.compute(db, today);
+assert.strictEqual(d.emergency.servings, 6);
+assert.strictEqual(d.emergency.servingsNeeded, 63);
+assert.strictEqual(d.emergency.water, 30);
+console.log('engine tests passed');

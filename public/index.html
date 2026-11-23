@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#c7381f">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Mise en Place">
+<title>Mise en Place</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icons/favicon.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="in">
+    <h1 id="title">Mise en Place</h1>
+    <button id="who" class="pill" type="button"></button>
+    <a id="moreBtn" class="pill" href="#more" aria-label="More">⋯</a>
+  </div>
+  <div id="offline" class="offline" hidden></div>
+</header>
+<main id="view"></main>
+<nav class="tabs" id="tabs">
+  <a href="#menu" data-tab="menu"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="17" rx="2"/><path d="M4 9h16M8 2v4M16 2v4M8 13h3M8 17h6"/></svg><span data-t="Menu"></span></a>
+  <a href="#pantry" data-tab="pantry"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M5 10h14M9 6.5v1M9 13v3"/></svg><span data-t="Pantry"></span><b class="n" id="nPantry"></b></a>
+  <a href="#shop" data-tab="shop"><svg viewBox="0 0 24 24"><path d="M4 7h16l-1.5 12a2 2 0 0 1-2 1.8h-9a2 2 0 0 1-2-1.8Z"/><path d="M9 10V6a3 3 0 0 1 6 0v4"/></svg><span data-t="Shopping"></span><b class="n" id="nShop"></b></a>
+  <a href="#recipes" data-tab="recipes"><svg viewBox="0 0 24 24"><path d="M3 13h18a9 9 0 0 1-18 0Z"/><path d="M8 9c0-2 2-2 2-4M13 9c0-2 2-2 2-4"/></svg><span data-t="Recipes"></span></a>
+  <a href="#reserve" data-tab="reserve"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6Z"/><path d="M9 12l2 2 4-4"/></svg><span data-t="Reserve"></span><b class="n warn" id="nReserve"></b></a>
+</nav>
+<dialog id="dlg"></dialog>
+<div id="toast" role="status"></div>
+<script src="/i18n.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "miseenplace",
+  "version": "1.0.0",
+  "description": "Household pantry, weekly menu, shopping list and emergency stock — self-hosted.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node test/engine.test.js && node test/server.test.js"
+  },
+  "engines": { "node": ">=20" },
+  "license": "MIT",
+  "private": true
+}
