@@ -12,6 +12,13 @@ Runs as one small Docker container on the Synology NAS. Both phones (Android and
 - *Use* part of something, mark it *Empty* (cooking with leftovers), or *Bin* it with a reason.
 - Each product can have a **minimum stock**: as soon as free stock drops below it, one pack goes on the shopping list.
 
+**Recipes**
+- Normal recipes with fixed amounts, or recipes built around one **main ingredient**: other amounts are *parts* of it (1 part apples = same weight as the red cabbage) or *per 100 g* of it (1½ tbsp sugar per 100 g). The planned meal uses the main ingredient you have in stock; change it on the meal and everything scales.
+- Amounts like `1 1/2`, `1,5` or `½`; spoons (tbsp/tsp) converted with the product's grams per tablespoon.
+- Cloves, slices and stalks: a garlic bulb splits into cloves, so a recipe asks for 3 cloves and the pantry shows "1 pcs + 7 cloves".
+- *As written*: keep the recipe's own wording next to the real amount, e.g. "1 small can (160 g)". Tins and jars can have a weight, so 160 g of a 400 g tin counts as 0.4 tin.
+- Ingredients not taken from stock (tap water) are shown and scaled, but never reserved or bought.
+
 **Menu**
 - One dinner per day, weeks run Monday–Sunday. Each day is *Cook at home*, *Eating out*, *Invited* or *Leftovers*.
 - *Suggest* picks recipes from your own collection: ingredients closest to their best-before date score highest, then everything is ordered so the most urgent meal is cooked first.
@@ -53,7 +60,7 @@ Access from outside goes through **Tailscale**; nothing is opened to the interne
 2. The install script runs `tailscale serve`, so the app is at `https://<nas-name>.<tailnet>.ts.net:8443`.
 3. **Pixel (Firefox):** if Tailscale is limited to selected apps, make sure Firefox is included. Open the https address → menu ⋮ → *Add to Home screen*.
 4. **iPhone 13 (Safari):** install the Tailscale app and sign in to the same tailnet. Open the https address in Safari → Share → *Add to Home Screen*.
-5. On first start each person picks their name and language.
+5. On first start each person picks their name and language. The NL/EN button in the top bar switches language at any time.
 
 ## Development
 

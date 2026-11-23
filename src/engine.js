@@ -1,7 +1,9 @@
-'use strict';
 // Planning engine: dates, stock reservations (first-expiry-first-out), carry-over,
 // automatic shopping list, menu suggestions and emergency coverage.
 // Pure functions over the db object; the server persists the result.
+// Shared by the server (require) and the phones (window.Engine), so both calculate the same way.
+(function (root) {
+'use strict';
 
 const DAY = 864e5;
 const iso = d => d.toLocaleDateString('sv-SE'); // YYYY-MM-DD in the container's local time zone
@@ -14,6 +16,63 @@ const round = x => Math.round(x * 1000) / 1000;
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const fefo = (a, b) => (a.bb || '9999-12-31').localeCompare(b.bb || '9999-12-31') || (a.addedAt || '').localeCompare(b.addedAt || '');
 const DAY_TYPES = ['home', 'out', 'invited', 'leftovers'];
+
+/* ---------- units and recipe amounts ---------- */
+const MASS = { g: 1, kg: 1000 }, VOL = { ml: 1, l: 1000 }, SPOON = { tbsp: 1, tsp: 1 / 3 };
+const SUB_UNITS = ['clove', 'slice', 'stalk']; // parts of one piece: a garlic bulb, a loaf, a head of celery
+const COUNTED = ['pcs', 'pack', 'tin', 'jar', 'bag', 'bottle']; // units that can carry a weight per piece
+// Convert an amount in a recipe unit to a product's stock unit. Grams and millilitres meet 1:1 (water-like),
+// spoons use the product's grams per tablespoon (default 15), pieces its weight per piece,
+// and cloves/slices/stalks how many of them one piece holds.
+function convert(qty, from, p) {
+  const to = p.unit;
+  if (!from || from === to) return qty;
+  if (SUB_UNITS.includes(from)) {
+    if (p.subUnit !== from || !(p.subCount > 0)) return null;
+    qty /= p.subCount; from = COUNTED.includes(to) ? to : 'pcs'; // now in whole pieces
+    if (from === to) return qty;
+  }
+  let base;
+  if (MASS[from]) base = qty * MASS[from];
+  else if (VOL[from]) base = qty * VOL[from];
+  else if (SPOON[from]) base = qty * SPOON[from] * (MASS[to] ? (p.spoonG || 15) : 15);
+  else if (COUNTED.includes(from) && p.pieceG) base = qty * p.pieceG;
+  else return null;
+  if (MASS[to]) return base / MASS[to];
+  if (VOL[to]) return base / VOL[to];
+  if (COUNTED.includes(to) && p.pieceG) return base / p.pieceG;
+  return null;
+}
+// How much of the main ingredient a planned meal uses (ratio recipes).
+const baseOf = (r, e) => (e && e.base > 0 ? e.base : r.baseQty || 0);
+// Ingredient amounts for one recipe (optionally for one planned meal), in each product's stock unit.
+// Ratio recipes: 'part' = same amount as the main ingredient, 'per100' = per 100 of the main ingredient's unit.
+function needs(db, r, e) {
+  const prods = new Map(db.products.map(p => [p.id, p]));
+  const out = [];
+  const push = (pid, qty, unit) => {
+    const p = prods.get(pid); if (!p || !(qty > 0)) return;
+    const q = convert(qty, unit, p);
+    if (q != null) out.push({ productId: pid, qty: round(q) });
+  };
+  if (r.mode === 'ratio') {
+    const base = baseOf(r, e);
+    push(r.baseProductId, base, r.baseUnit);
+    for (const i of r.ingredients || []) {
+      if (!i.productId) continue; // not from stock (tap water…)
+      if (i.per === 'part') push(i.productId, i.qty * base, r.baseUnit);
+      else if (i.per === 'per100') push(i.productId, i.qty * base / 100, i.unit);
+      else push(i.productId, i.qty, i.unit);
+    }
+  } else {
+    const f = (e && e.servings || r.servings || 1) / (r.servings || 1);
+    for (const i of r.ingredients || []) if (i.productId) push(i.productId, i.qty * f, i.unit);
+  }
+  // one line per product
+  const merged = new Map();
+  for (const n of out) merged.set(n.productId, round((merged.get(n.productId) || 0) + n.qty));
+  return [...merged].map(([productId, qty]) => ({ productId, qty }));
+}
 
 function freshDb() {
   return {
@@ -101,9 +160,8 @@ function compute(db, today) {
     const r = recipes.get(e.recipeId);
     const info = { date: dates[e.id] || null, alloc: [], missing: [], warn: [], deadline: null };
     if (r) {
-      const f = (e.servings || r.servings || 1) / (r.servings || 1);
-      for (const ing of r.ingredients || []) {
-        let need = round(ing.qty * f);
+      for (const ing of needs(db, r, e)) {
+        let need = ing.qty;
         for (const l of (byProd.get(ing.productId) || []).filter(usable)) {
           if (need <= 0) break;
           const have = rem.get(l.id); if (have <= 0) continue;
@@ -138,14 +196,14 @@ function compute(db, today) {
 
   // Emergency coverage: how many servings the emergency recipes can make from the reserve.
   const emRem = new Map(db.lots.filter(isEm).map(l => [l.id, rem.get(l.id)]));
-  const emRecipes = db.recipes.filter(r => r.emergency && (r.ingredients || []).length);
+  const emRecipes = db.recipes.filter(r => r.emergency).map(r => ({ r, need: needs(db, r, null) })).filter(x => x.need.length);
   let servings = 0, guard = 0, progress = true;
   const madeCount = {};
   while (progress && guard++ < 400) {
     progress = false;
-    for (const r of emRecipes) {
+    for (const { r, need: list } of emRecipes) {
       const trial = new Map(emRem); let ok = true;
-      for (const ing of r.ingredients) {
+      for (const ing of list) {
         let need = ing.qty;
         for (const l of (byProd.get(ing.productId) || []).filter(isEm)) {
           if (need <= 0) break;
@@ -215,6 +273,21 @@ function syncAuto(db, today, derived) {
   return changed;
 }
 
+// Default amount of the main ingredient for a ratio recipe: what's left of the first-expiring
+// usable pack in stock (e.g. the 600 g red cabbage), otherwise the recipe's usual amount.
+function defaultBase(db, r, remMap, usable) {
+  const p = db.products.find(x => x.id === r.baseProductId);
+  if (!p) return r.baseQty || 0;
+  for (const l of db.lots.filter(l => l.productId === p.id && usable(l)).sort(fefo)) {
+    const left = remMap.has(l.id) ? remMap.get(l.id) : l.qty;
+    if (left > 0) {
+      const q = convert(left, p.unit, { unit: r.baseUnit, pieceG: p.pieceG, spoonG: p.spoonG });
+      if (q > 0) return round(q);
+    }
+  }
+  return r.baseQty || 0;
+}
+
 // Suggest recipes for the empty home days of a week, most urgent first.
 function suggest(db, today, wk) {
   const w = ensureWeek(db, wk);
@@ -237,9 +310,12 @@ function suggest(db, today, wk) {
   for (let k = 0; k < slots; k++) {
     let best = null;
     for (const r of db.recipes) {
-      if (taken.has(r.id) || !(r.ingredients || []).length) continue;
+      if (taken.has(r.id)) continue;
+      const base = r.mode === 'ratio' ? defaultBase(db, r, rem, usable) : undefined;
+      const list = needs(db, r, base ? { base } : null);
+      if (!list.length) continue;
       const trial = new Map(); let urgency = 0; const urgent = []; const missing = []; let rot = false; let deadline = null;
-      for (const ing of r.ingredients) {
+      for (const ing of list) {
         let need = ing.qty;
         for (const l of (byProd.get(ing.productId) || []).filter(usable)) {
           if (need <= 0) break;
@@ -258,7 +334,7 @@ function suggest(db, today, wk) {
       }
       if (r.emergency && !rot) continue; // emergency meals only join the menu when their stock needs rotating
       const score = urgency + (missing.length ? -3 * missing.length : 4) + (r.fav ? 1 : 0) - (recent.has(r.id) ? 3 : 0) + Math.random() * 0.3;
-      if (!best || score > best.score) best = { recipeId: r.id, score, urgent, missing, rotate: rot, deadline, trial };
+      if (!best || score > best.score) best = { recipeId: r.id, base, score, urgent, missing, rotate: rot, deadline, trial };
     }
     if (!best) break;
     for (const [id, v] of best.trial) rem.set(id, v);
@@ -270,5 +346,13 @@ function suggest(db, today, wk) {
   return picks;
 }
 
-module.exports = { freshDb, ensureWeek, assignDates, renumber, carryOver, compute, syncAuto, suggest,
+// Usable-lot test for the server (normal stock, plus emergency stock that needs rotating).
+function usableFor(db, today) {
+  const em = new Set(db.locations.filter(l => l.emergency).map(l => l.id));
+  return l => !em.has(l.locationId) || (!!l.bb && diff(today, l.bb) <= db.settings.rotationDays);
+}
+
+const API = { SUB_UNITS, COUNTED, freshDb, needs, convert, defaultBase, usableFor, ensureWeek, assignDates, renumber, carryOver, compute, syncAuto, suggest,
   todayISO, addDays, monday, round, uid, DAY_TYPES };
+if (typeof module === 'object' && module.exports) module.exports = API; else root.Engine = API;
+})(typeof self !== 'undefined' ? self : globalThis);

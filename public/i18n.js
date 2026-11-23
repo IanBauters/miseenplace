@@ -1,13 +1,13 @@
 // Translations. Keys are the English text; `nl` holds Dutch. `en_` covers keys that aren't plain English.
 window.I18N = {
   en_: {
-    'u.pcs': 'pcs', 'u.g': 'g', 'u.kg': 'kg', 'u.ml': 'ml', 'u.l': 'l', 'u.pack': 'pack', 'u.tin': 'tin', 'u.jar': 'jar', 'u.bag': 'bag', 'u.bottle': 'bottle',
+    'u.pcs': 'pcs', 'u.g': 'g', 'u.kg': 'kg', 'u.ml': 'ml', 'u.l': 'l', 'u.pack': 'pack', 'u.tin': 'tin', 'u.jar': 'jar', 'u.bag': 'bag', 'u.bottle': 'bottle', 'u.tbsp': 'tbsp', 'u.tsp': 'tsp', 'u.clove': 'clove', 'u.clove.pl': 'cloves', 'u.slice': 'slice', 'u.slice.pl': 'slices', 'u.stalk': 'stalk', 'u.stalk.pl': 'stalks',
     'day.home': 'Cook at home', 'day.out': 'Eating out', 'day.invited': 'Invited', 'day.leftovers': 'Leftovers',
     'daynote.out': 'Eating out — nothing to cook.', 'daynote.invited': 'Invited — nothing to cook.', 'daynote.leftovers': 'Cook with what’s left: mark packs as empty in the Pantry.',
     'reason.off': 'went off', 'reason.past': 'past date', 'reason.mould': 'mouldy', 'reason.forgot': 'forgotten', 'reason.other': 'other'
   },
   nl: {
-    'u.pcs': 'st', 'u.g': 'g', 'u.kg': 'kg', 'u.ml': 'ml', 'u.l': 'l', 'u.pack': 'pak', 'u.tin': 'blik', 'u.jar': 'pot', 'u.bag': 'zak', 'u.bottle': 'fles',
+    'u.pcs': 'st', 'u.g': 'g', 'u.kg': 'kg', 'u.ml': 'ml', 'u.l': 'l', 'u.pack': 'pak', 'u.tin': 'blik', 'u.jar': 'pot', 'u.bag': 'zak', 'u.bottle': 'fles', 'u.tbsp': 'el', 'u.tsp': 'kl', 'u.clove': 'teentje', 'u.clove.pl': 'teentjes', 'u.slice': 'sneetje', 'u.slice.pl': 'sneetjes', 'u.stalk': 'stengel', 'u.stalk.pl': 'stengels',
     'day.home': 'Thuis koken', 'day.out': 'Uit eten', 'day.invited': 'Uitgenodigd', 'day.leftovers': 'Restjes',
     'daynote.out': 'Uit eten — niets te koken.', 'daynote.invited': 'Uitgenodigd — niets te koken.', 'daynote.leftovers': 'Koken met wat over is: zet pakken op leeg in de Voorraad.',
     'reason.off': 'bedorven', 'reason.past': 'datum voorbij', 'reason.mould': 'beschimmeld', 'reason.forgot': 'vergeten', 'reason.other': 'andere',
@@ -62,7 +62,7 @@ window.I18N = {
     'Offline — showing the last known state. Changes need a connection.': 'Offline — laatst gekende toestand. Wijzigen kan pas met verbinding.', 'On the emergency shelf': 'Op de noodplank',
     'Or type the barcode': 'Of typ de barcode', 'Pack size': 'Verpakking', 'Pantry': 'Voorraad', 'Past week': 'Vorige week', 'People': 'Personen', 'Place': 'Plaats', 'Places': 'Plaatsen',
     'Previous week': 'Vorige week', 'Product': 'Product', 'Products': 'Producten', 'Put away in the pantry': 'Opbergen in de voorraad', 'Recipe': 'Recept', 'Recipes': 'Recepten',
-    'Remove': 'Verwijderen', 'Reserve': 'Nood', 'Rotate days before expiry': 'Roteren, dagen voor vervaldatum', 'Save': 'Bewaren', 'Saved': 'Bewaard', 'Scan barcode': 'Barcode scannen',
+    'Remove': 'Verwijderen', 'Reserve': 'Nood', 'Rotate (days before expiry)': 'Roteren (dagen vooraf)', 'Save': 'Bewaren', 'Saved': 'Bewaard', 'Scan barcode': 'Barcode scannen',
     'Search': 'Zoeken', 'Search recipes': 'Recepten zoeken', 'Servings': 'Porties',
     "Set 'Keep in emergency stock' on products (More → Products) and the app keeps them topped up.": "Stel 'In noodvoorraad houden' in bij producten (Meer → Producten) en de app houdt ze aangevuld.",
     'Share list': 'Lijst delen', 'Shopping': 'Boodschappen', 'Shopping list': 'Boodschappenlijst', 'Sort by best-before': 'Sorteren op THT', 'Stock to keep': 'Voorraad aan te houden', 'Store': 'Opbergen',
@@ -72,7 +72,7 @@ window.I18N = {
     'They go on the shopping list when you confirm the week.': 'Die gaan op de boodschappenlijst als je de week bevestigt.', 'This is drinking water': 'Dit is drinkwater', 'This week': 'Deze week',
     'To rotate (expires within {d} days)': 'Te roteren (vervalt binnen {d} dagen)', 'Unit': 'Eenheid', 'Use': 'Gebruiken', 'Use some {x}': 'Wat {x} gebruiken', 'Use soon': 'Snel op',
     'Usual place': 'Vaste plaats', 'Waste': 'Verspilling', 'Water': 'Water', 'Water l/person/day': 'Water l/persoon/dag', 'Week': 'Week', 'Where': 'Waar', "Who's using this phone?": 'Wie gebruikt deze telefoon?',
-    'Why?': 'Waarom?', 'all in stock': 'alles in voorraad', "amounts in the product's unit": 'hoeveelheden in de eenheid van het product', 'below minimum': 'onder minimum', 'can make now': 'nu te maken',
+    'Why?': 'Waarom?', 'all in stock': 'alles in voorraad', 'below minimum': 'onder minimum', 'can make now': 'nu te maken',
     'days': 'dagen', 'due {d}': 'THT {d}', 'e.g. Pasta': 'bv. Pasta', 'e.g. quick, vegetarian': 'bv. snel, vegetarisch', 'emergency stock': 'noodvoorraad', 'for {x}': 'voor {x}', 'items ready': 'items klaar',
     'missing': 'ontbreekt', 'needs a stove': 'vuurtje nodig', 'not planned yet': 'nog niet gepland', 'nothing': 'niets', 'on the menu': 'op het menu', 'past': 'voorbij', 'past date': 'datum voorbij',
     'planned': 'gepland', 'this phone': 'deze telefoon', 'today': 'vandaag', 'tomorrow': 'morgen', 'yesterday': 'gisteren', '{a} of {b} servings': '{a} van {b} porties',
@@ -80,6 +80,14 @@ window.I18N = {
     '{n} emergency items expire within {d} days. Suggestions put them on the menu so you can restock in time.': '{n} items uit de noodvoorraad vervallen binnen {d} dagen. De voorstellen zetten ze op het menu zodat je tijdig kan aanvullen.',
     '{n} item(s) binned': '{n} item(s) weggegooid',
     "{n} meal(s) don't fit in this week's home days. Set a day back to 'Cook at home', or they move to next week.": "{n} maaltijd(en) passen niet in de thuisdagen van deze week. Zet een dag terug op 'Thuis koken', anders schuiven ze door naar volgende week.",
+    'Amounts depend on one main ingredient': 'Hoeveelheden hangen af van één hoofdingrediënt', 'Main ingredient': 'Hoofdingrediënt',
+    'Usual amount': 'Gebruikelijke hoeveelheid', 'Servings for the usual amount': 'Porties voor die hoeveelheid', 'fixed amount': 'vaste hoeveelheid',
+    'parts': 'delen', 'per 100 {u} main ingredient': 'per 100 {u} hoofdingrediënt', 'from stock': 'uit voorraad', 'For {x}:': 'Voor {x}:',
+    'Choose the main ingredient': 'Kies het hoofdingrediënt', 'Check the amount for {x}': 'Controleer de hoeveelheid van {x}',
+    "{x} can't be converted: set its weight per piece (More → Products)": '{x} kan niet omgerekend worden: stel het gewicht per stuk in (Meer → Producten)',
+    'How much {x}?': 'Hoeveel {x}?', 'Based on {x}': 'Volgens {x}', 'Weight per piece, tin or jar (g)': 'Gewicht per stuk, blik of pot (g)', 'One piece splits into': 'Eén stuk bestaat uit',
+    'How many in one piece': 'Hoeveel in één stuk', 'as written, e.g. 1 small can': 'zoals in het recept, bv. 1 klein blikje', 'As written in the recipe': 'Zoals in het recept', 'Grams per tablespoon': 'Gram per eetlepel',
+    'Recipe for this meal': 'Recept voor deze maaltijd', 'Amounts like 1 1/2 or 1,5 work': 'Hoeveelheden zoals 1 1/2 of 1,5 werken', 'How': 'Hoe',
     '{n} servings': '{n} porties', '{n}× from the reserve': '{n}× uit de noodvoorraad', '{x} marked as empty': '{x} op leeg gezet'
   }
 };

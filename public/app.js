@@ -39,17 +39,25 @@ const Lc = id => IX.l.get(id);
 const locName = l => l ? (l.name || t(l.key)) : '?';
 const pName = id => (P(id) || {}).name || '?';
 const UNITS = ['pcs', 'g', 'kg', 'ml', 'l', 'pack', 'tin', 'jar', 'bag', 'bottle'];
-const uLabel = u => t('u.' + u);
+const uLabel = (u, q) => t('u.' + u + (q !== undefined && q !== 1 && Engine.SUB_UNITS.includes(u) ? '.pl' : ''));
 function fq(q, u) {
   q = Number(q) || 0;
+  if (Engine.SUB_UNITS.includes(u)) return nf(q) + ' ' + uLabel(u, q);
   if (u === 'g' && q >= 1000) return nf(q / 1000) + ' kg';
   if (u === 'ml' && q >= 1000) return nf(q / 1000) + ' l';
   return nf(q) + ' ' + uLabel(u);
 }
+// Stock amounts: a part-used garlic bulb shows as "1 pcs + 7 cloves" instead of "1.7 pcs".
+function fqP(qty, p) {
+  if (!p || !p.subUnit || !(p.subCount > 0) || Number.isInteger(qty)) return fq(qty, p ? p.unit : 'pcs');
+  const whole = Math.floor(qty + 1e-9), rest = Math.round((qty - whole) * p.subCount);
+  return (whole ? fq(whole, p.unit) + ' + ' : '') + fq(rest, p.subUnit);
+}
 // Shopping amounts in whole packs: "2 × 500 g"; plain amount when the pack size is 1.
 function packs(p, qty) {
   const ps = p.packSize || 1;
-  return ps === 1 ? fq(qty, p.unit) : `${Math.ceil(qty / ps - 1e-9)} × ${fq(ps, p.unit)}`;
+  if (ps === 1) return fq(Engine.COUNTED.includes(p.unit) ? Math.ceil(qty - 1e-9) : qty, p.unit); // you can't buy 0.3 of a bulb
+  return `${Math.ceil(qty / ps - 1e-9)} × ${fq(ps, p.unit)}`;
 }
 const userName = id => (IX.u.get(id) || {}).name || '';
 
@@ -108,6 +116,7 @@ const view = () => VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(
 function render() {
   document.documentElement.lang = lang;
   document.querySelectorAll('[data-t]').forEach(el => { el.textContent = t(el.dataset.t); });
+  $('#langBtn').textContent = lang === 'nl' ? 'EN' : 'NL';
   if (!ST) { $('#view').innerHTML = `<div class="empty"><span class="spin"></span> ${t('Loading…')}</div>`; return; }
   if (!me || !ST.db.users.some(u => u.id === me)) return renderWho();
   $('#who').textContent = userName(me);
@@ -188,7 +197,7 @@ function mealCard(e, w) {
     <div>${e.carried && e.status !== 'cooked' ? `<span class="badge b-no">${t('Carried over — cook first')}</span>` : ''}${rotate ? `<span class="badge b-sky">${t('Emergency rotation')}</span>` : ''}
     ${miss.map(m => `<span class="badge b-no">${t('missing')}: ${esc(pName(m.productId))}</span>`).join('')}
     ${warn.map(x => `<span class="badge b-soon">${esc(pName(x.productId))} ${x.type === 'past' ? t('past date') : t('due {d}', { d: rel(x.bb) })}</span>`).join('')}
-    <span class="meta small">${t('{n} servings', { n: nf(e.servings || r.servings) })}</span></div>
+    ${r.mode === 'ratio' ? `<button class="mini" data-a="base" data-id="${e.id}" ${e.status !== 'planned' ? 'disabled' : ''}>${esc(fq(e.base || r.baseQty, r.baseUnit) + ' ' + pName(r.baseProductId))}</button> ` : ''}<span class="meta small">${t('{n} servings', { n: nf(Math.round(mealServings(r, e) * 10) / 10) })}</span></div>
     ${e.status === 'planned' && ST.derived.week <= e.week ? `<div class="row tight"><button class="mini icon" data-a="mv" data-id="${e.id}" data-d="-1" aria-label="${t('Earlier')}">↑</button><button class="mini icon" data-a="mv" data-id="${e.id}" data-d="1" aria-label="${t('Later')}">↓</button>
       <button class="mini" data-a="cook" data-id="${e.id}">✓ ${t('Cooked')}</button>${!w.confirmed ? `<button class="mini danger" data-a="rmmeal" data-id="${e.id}">${t('Remove')}</button>` : ''}</div>` : ''}</div>`;
 }
@@ -211,8 +220,10 @@ function addMealDlg() {
 }
 function cookDlg(id) {
   const e = ST.db.plan.find(x => x.id === id); const info = ST.derived.entries[id] || {};
-  openDlg(`<h2>${esc((R(e.recipeId) || {}).name)}</h2><p>${t('Mark as cooked? This takes these ingredients out of stock:')}</p>
-  <ul>${(info.alloc || []).map(a => `<li>${esc(pName(a.productId))} — ${fq(a.qty, (P(a.productId) || {}).unit)}</li>`).join('') || `<li class="meta">${t('nothing')}</li>`}</ul>
+  const r = R(e.recipeId) || { name: '?', ingredients: [] };
+  openDlg(`<h2>${esc(r.name)}</h2><b class="small">${t('Recipe for this meal')}</b>${linesHtml(recipeLines(r, e))}${r.steps ? `<details><summary>${t('Method')}</summary><p style="white-space:pre-wrap">${esc(r.steps)}</p></details>` : ''}
+  <p>${t('Mark as cooked? This takes these ingredients out of stock:')}</p>
+  <ul>${(info.alloc || []).map(a => `<li>${esc(pName(a.productId))} — ${fqP(a.qty, P(a.productId))}</li>`).join('') || `<li class="meta">${t('nothing')}</li>`}</ul>
   ${(info.missing || []).length ? `<div class="note warn">${t('Not in stock (you used something else?)')}: ${info.missing.map(m => esc(pName(m.productId))).join(', ')}</div>` : ''}`,
   async () => { await act('plan.cook', { id }); }, t('Cooked'));
 }
@@ -232,7 +243,7 @@ function vPantry() {
   const row = l => {
     const p = P(l.productId) || { unit: 'pcs' }; const st = bbState(l.bb);
     const res = reservedBy[l.id] ? `<span class="badge b-soft">${t('planned')}</span>` : '';
-    return `<div class="item st-${st}"><div><b>${esc(p.name)}</b> <span class="meta">${fq(l.qty, p.unit)}${f === 'all' || f === 'soon' ? ' · ' + esc(locName(Lc(l.locationId))) : ''}</span> ${res}</div>
+    return `<div class="item st-${st}"><div><b>${esc(p.name)}</b> <span class="meta">${fqP(l.qty, p)}${f === 'all' || f === 'soon' ? ' · ' + esc(locName(Lc(l.locationId))) : ''}</span> ${res}</div>
     <div class="when">${l.bb ? (st === 'past' ? t('past') + ' · ' : '') + rel(l.bb) : `<button class="mini" data-a="editlot" data-id="${l.id}">${t('Add date')}</button>`}</div>
     <div class="acts"><button class="mini" data-a="use" data-id="${l.id}">${t('Use')}</button><button class="mini" data-a="empty" data-id="${l.id}">${t('Empty')}</button><button class="mini danger" data-a="bin" data-id="${l.id}">${t('Bin')}</button><button class="mini" data-a="editlot" data-id="${l.id}">${t('Edit')}</button></div></div>`;
   };
@@ -254,9 +265,13 @@ function productFields(p = {}, prefix = '') {
   <label class="wide">${t('Minimum stock')}<input name="${prefix}min" type="number" step="any" min="0" inputmode="decimal" value="${esc(p.min ?? 0)}"></label></div>
   <div class="grid2"><label>${t('Usual place')}<select name="${prefix}locationId">${locOpts(p.locationId)}</select></label>
   <label>${t('Keep in emergency stock')}<input name="${prefix}emergencyQty" type="number" step="any" min="0" inputmode="decimal" value="${esc(p.emergencyQty ?? 0)}"></label></div>
+  <div class="grid2 fields"><label>${t('Weight per piece, tin or jar (g)')}<input name="${prefix}pieceG" type="number" step="any" min="0" inputmode="decimal" value="${esc(p.pieceG || '')}" placeholder="—"></label>
+  <label>${t('Grams per tablespoon')}<input name="${prefix}spoonG" type="number" step="any" min="0" inputmode="decimal" value="${esc(p.spoonG || '')}" placeholder="15"></label></div>
+  <div class="grid2 fields"><label>${t('One piece splits into')}<select name="${prefix}subUnit"><option value="">—</option>${opts(Engine.SUB_UNITS, p.subUnit, u => uLabel(u, 2))}</select></label>
+  <label>${t('How many in one piece')}<input name="${prefix}subCount" type="number" step="any" min="0" inputmode="decimal" value="${esc(p.subCount || '')}" placeholder="10"></label></div>
   <label class="check"><input type="checkbox" name="${prefix}water" ${p.water ? 'checked' : ''}> ${t('This is drinking water')}</label>`;
 }
-const readProduct = (fd, prefix = '') => ({ unit: fd.get(prefix + 'unit'), packSize: fd.get(prefix + 'packSize'), min: fd.get(prefix + 'min'), locationId: fd.get(prefix + 'locationId'), emergencyQty: fd.get(prefix + 'emergencyQty'), water: !!fd.get(prefix + 'water') });
+const readProduct = (fd, prefix = '') => ({ unit: fd.get(prefix + 'unit'), packSize: fd.get(prefix + 'packSize'), min: fd.get(prefix + 'min'), locationId: fd.get(prefix + 'locationId'), emergencyQty: fd.get(prefix + 'emergencyQty'), water: !!fd.get(prefix + 'water'), pieceG: fd.get(prefix + 'pieceG'), spoonG: fd.get(prefix + 'spoonG'), subUnit: fd.get(prefix + 'subUnit') || '', subCount: fd.get(prefix + 'subCount') });
 
 function addStockDlg(pre = {}) {
   const p0 = pre.productId ? P(pre.productId) : null;
@@ -290,9 +305,13 @@ function addStockDlg(pre = {}) {
 function lotDlg(id, mode) {
   const l = ST.db.lots.find(x => x.id === id); if (!l) return;
   const p = P(l.productId) || { unit: 'pcs', name: '?' };
-  if (mode === 'use') return openDlg(`<h2>${t('Use some {x}', { x: esc(p.name) })}</h2><p class="meta">${t('In stock')}: ${fq(l.qty, p.unit)}</p>
-    <label>${t('Amount used')} (${uLabel(p.unit)})<input name="qty" type="number" step="any" min="0" inputmode="decimal" value="${esc(Math.min(l.qty, ['g', 'ml'].includes(p.unit) ? 100 : 1))}"></label>`,
-    async fd => !!(await act('stock.use', { id, qty: fd.get('qty') })) || false, t('Use'));
+  if (mode === 'use') {
+    const sub = p.subUnit && p.subCount > 0;
+    return openDlg(`<h2>${t('Use some {x}', { x: esc(p.name) })}</h2><p class="meta">${t('In stock')}: ${fqP(l.qty, p)}</p>
+    <div class="grid2"><label>${t('Amount used')}<input name="qty" inputmode="decimal" value="${sub ? 1 : esc(Math.min(l.qty, ['g', 'ml'].includes(p.unit) ? 100 : 1))}"></label>
+    <label>${t('Unit')}<select name="unit">${opts(sub ? [p.subUnit, p.unit] : [p.unit], sub ? p.subUnit : p.unit, u => uLabel(u, 2))}</select></label></div>`,
+    async fd => { const q = parseAmt(fd.get('qty')); const c = q > 0 ? Engine.convert(q, fd.get('unit'), p) : null; if (!(c > 0)) { toast(t('Check the amount for {x}', { x: p.name })); return false; } return !!(await act('stock.use', { id, qty: c })) || false; }, t('Use'));
+  }
   if (mode === 'bin') return openDlg(`<h2>${t('Bin {x}', { x: esc(p.name) })}</h2><p class="meta">${t('Logged as waste, so you can see what goes off most.')}</p>
     <label>${t('Amount')} (${uLabel(p.unit)})<input name="qty" type="number" step="any" min="0" inputmode="decimal" value="${esc(l.qty)}"></label>
     <label>${t('Why?')}<select name="reason">${opts(['off', 'past', 'mould', 'forgot', 'other'], 'off', x => t('reason.' + x))}</select></label>`,
@@ -383,9 +402,59 @@ async function shareList() {
 }
 
 /* ---------- RECIPES ---------- */
+const RUNITS = [...UNITS, 'tbsp', 'tsp', ...Engine.SUB_UNITS];
+const SUB_DEFAULT = { clove: 10, slice: 20, stalk: 8 }; // first guess when a new product is made from a recipe
+// Accepts 1.5, 1,5, 1 1/2, 3/4 and ½-style amounts.
+function parseAmt(v) {
+  const s = String(v ?? '').trim().replace(/,/g, '.').replace(/[½¼¾⅓⅔]/g, c => ' ' + { '½': '1/2', '¼': '1/4', '¾': '3/4', '⅓': '1/3', '⅔': '2/3' }[c]);
+  if (!s) return NaN;
+  let n = 0;
+  for (const part of s.split(/\s+/).filter(Boolean)) {
+    const m = part.match(/^(\d*\.?\d+)\/(\d*\.?\d+)$/);
+    if (m) n += m[1] / m[2]; else if (/^\d*\.?\d+$/.test(part)) n += Number(part); else return NaN;
+  }
+  return n;
+}
+const ingUnit = i => i.unit || (i.productId ? (P(i.productId) || {}).unit : 'pcs') || 'pcs';
+const ingName = i => i.name || pName(i.productId);
+// The recipe as you'd read it while cooking, scaled to a planned meal (or the usual amount).
+function recipeLines(r, e) {
+  const out = [];
+  if (r.mode === 'ratio') {
+    const base = e && e.base > 0 ? e.base : r.baseQty;
+    out.push({ name: r.baseName || pName(r.baseProductId), qty: base, unit: r.baseUnit, main: true, productId: r.baseProductId });
+    for (const i of r.ingredients || []) {
+      let qty, unit;
+      if (i.per === 'part') {
+        qty = i.qty * base; unit = r.baseUnit;
+        if (i.unit && i.unit !== unit) { const c = Engine.convert(qty, unit, { unit: i.unit }); if (c != null) { qty = c; unit = i.unit; } }
+      } else if (i.per === 'per100') { qty = i.qty * base / 100; unit = ingUnit(i); }
+      else { qty = i.qty; unit = ingUnit(i); }
+      out.push({ name: ingName(i), qty, unit, productId: i.productId, note: i.per === 'fixed' ? i.note : '' });
+    }
+  } else {
+    const f = ((e && e.servings) || r.servings) / (r.servings || 1);
+    for (const i of r.ingredients || []) out.push({ name: ingName(i), qty: i.qty * f, unit: ingUnit(i), productId: i.productId, note: f === 1 ? i.note : '' });
+  }
+  return out;
+}
+function lineText(l) {
+  const p = l.productId && P(l.productId);
+  let extra = '';
+  if (p && l.unit !== p.unit) {
+    const c = Engine.convert(l.qty, l.unit, p);
+    extra = c == null ? ' ⚠' : (['tbsp', 'tsp'].includes(l.unit) || Engine.COUNTED.includes(l.unit) || (Engine.COUNTED.includes(p.unit) && !Engine.SUB_UNITS.includes(l.unit))) ? ` (≈ ${fq(Math.round(c * 10) / 10, p.unit)})` : '';
+  }
+  const amount = fq(Math.round(l.qty * 100) / 100, l.unit);
+  // "1 small can (160 g) tomato paste" when the recipe gives its own wording
+  return l.note ? `${l.note} (${amount}) ${l.name}${extra}` : `${amount} ${l.name}${extra}`;
+}
+const linesHtml = ls => `<ul class="lines">${ls.map(l => `<li${l.main ? ' class="main"' : ''}>${esc(lineText(l))}</li>`).join('')}</ul>`;
+const mealServings = (r, e) => r.mode === 'ratio' && r.baseQty ? r.servings * ((e && e.base) || r.baseQty) / r.baseQty : (e && e.servings) || r.servings;
+
 function canMake(r) {
   const s = ST.derived.stock;
-  return (r.ingredients || []).map(i => ({ ...i, ok: ((s[i.productId] || {}).free || 0) >= i.qty }));
+  return Engine.needs(ST.db, r, null).map(i => ({ ...i, ok: ((s[i.productId] || {}).free || 0) >= i.qty }));
 }
 function vRecipes() {
   const q = UI.recipeQ.toLowerCase();
@@ -395,56 +464,113 @@ function vRecipes() {
   $('#view').innerHTML = `<h2>${t('Recipes')}</h2><div class="row"><button class="btn" data-a="recipe">+ ${t('Recipe')}</button><input type="search" id="rq2" class="grow" style="width:auto" placeholder="${t('Search')}" value="${esc(UI.recipeQ)}"></div>
   ${rs.length ? rs.map(r => { const ings = canMake(r); const all = ings.length && ings.every(i => i.ok);
     return `<div class="card" data-a="recipe" data-id="${r.id}" style="cursor:pointer"><div class="row tight" style="justify-content:space-between;flex-wrap:nowrap"><h3>${r.fav ? '★ ' : ''}${esc(r.name)}</h3>${all ? `<span class="badge b-ok">${t('can make now')}</span>` : ''}</div>
-    <div>${r.emergency ? `<span class="badge b-sky">${t('Emergency')} · ${t('{n}× from the reserve', { n: em[r.id] || 0 })}</span>` : ''}${r.stove ? `<span class="badge b-soft">${t('needs a stove')}</span>` : ''}${(r.tags || []).map(x => `<span class="badge b-soft">${esc(x)}</span>`).join('')}<span class="meta small">${t('{n} servings', { n: nf(r.servings) })}</span></div>
+    <div>${r.mode === 'ratio' ? `<span class="badge b-soon">${esc(t('Based on {x}', { x: pName(r.baseProductId) }))}</span>` : ''}${r.emergency ? `<span class="badge b-sky">${t('Emergency')} · ${t('{n}× from the reserve', { n: em[r.id] || 0 })}</span>` : ''}${r.stove ? `<span class="badge b-soft">${t('needs a stove')}</span>` : ''}${(r.tags || []).map(x => `<span class="badge b-soft">${esc(x)}</span>`).join('')}<span class="meta small">${t('{n} servings', { n: nf(r.servings) })}</span></div>
     <div class="small" style="margin-top:4px">${ings.map(i => `<span class="badge ${i.ok ? 'b-ok' : 'b-no'}">${esc(pName(i.productId))}</span>`).join('')}</div></div>`; }).join('')
     : `<div class="empty">${t('No recipes yet. Add the meals you cook, with their ingredients, so the app can plan and suggest.')}</div>`}`;
   $('#rq2').oninput = e => { UI.recipeQ = e.target.value; const pos = e.target.selectionStart; vRecipes(); const n = $('#rq2'); n.focus(); n.setSelectionRange(pos, pos); };
 }
-function ingRow(i = {}) {
-  const p = i.productId ? P(i.productId) : null;
-  return `<div class="ingrow"><input name="iname" list="plist" autocomplete="off" placeholder="${t('Ingredient')}" value="${esc(p ? p.name : '')}" aria-label="${t('Ingredient')}">
-  <input name="iqty" type="number" step="any" min="0" inputmode="decimal" value="${esc(i.qty ?? '')}" aria-label="${t('Amount')}">
-  <select name="iunit" aria-label="${t('Unit')}" ${p ? 'disabled' : ''}>${opts(UNITS, p ? p.unit : 'g', uLabel)}</select>
-  <button type="button" class="mini icon" data-x="del" aria-label="${t('Remove')}">×</button></div>`;
+function ingRow(i = {}, baseUnit = 'g') {
+  const stock = i.productId !== null;
+  return `<div class="ingrow">
+  <input name="iname" list="plist" autocomplete="off" placeholder="${t('Ingredient')}" value="${esc(i.productId ? pName(i.productId) : i.name || '')}" aria-label="${t('Ingredient')}">
+  <button type="button" class="mini icon" data-x="del" aria-label="${t('Remove')}">×</button>
+  <input name="iqty" inputmode="decimal" autocomplete="off" placeholder="1 1/2" value="${esc(i.qty ?? '')}" aria-label="${t('Amount')}">
+  <select name="iunit" aria-label="${t('Unit')}">${opts(RUNITS, i.unit || (i.productId ? (P(i.productId) || {}).unit : 'g'), u => uLabel(u, 2))}</select>
+  <input name="inote" autocomplete="off" placeholder="${t('as written, e.g. 1 small can')}" value="${esc(i.note || '')}" aria-label="${t('As written in the recipe')}">
+  <select name="iper" class="ratio-only" aria-label="${t('How')}">${opts(['fixed', 'part', 'per100'], i.per || 'part', x => x === 'per100' ? t('per 100 {u} main ingredient', { u: uLabel(baseUnit) }) : x === 'part' ? t('parts') : t('fixed amount'))}</select>
+  <label class="check small istock"><input type="checkbox" name="istock" ${stock ? 'checked' : ''}> ${t('from stock')}</label></div>`;
 }
-function recipeDlg(id) {
-  const r = id ? R(id) : { servings: ST.db.settings.people, ingredients: [] };
+function recipeDlg(id, preset = {}) {
+  const r = id ? R(id) : { servings: ST.db.settings.people, ingredients: [], ...preset };
+  const ratio = r.mode === 'ratio';
   const f = openDlg(`<h2>${id ? t('Edit recipe') : t('New recipe')}</h2>${productList()}
     <label>${t('Name')}<input name="name" required value="${esc(r.name || '')}"></label>
-    <label>${t('Servings')}<input name="servings" type="number" min="1" inputmode="numeric" value="${esc(r.servings)}"></label>
-    <div><b class="small">${t('Ingredients')}</b> <span class="meta small">${t('amounts in the product\'s unit')}</span><div id="ings" style="display:grid;gap:6px;margin-top:6px">${(r.ingredients.length ? r.ingredients : [{}]).map(ingRow).join('')}</div>
-    <button type="button" class="mini" data-x="add" style="margin-top:6px">+ ${t('Ingredient')}</button></div>
+    <label class="check"><input type="checkbox" name="ratio" ${ratio ? 'checked' : ''}> ${t('Amounts depend on one main ingredient')}</label>
+    <div class="grid3 ratio-only"><label>${t('Main ingredient')}<input name="bname" list="plist" autocomplete="off" value="${esc(ratio ? pName(r.baseProductId) : '')}"></label>
+      <label>${t('Usual amount')}<input name="bqty" inputmode="decimal" value="${esc(r.baseQty ?? 600)}"></label>
+      <label>${t('Unit')}<select name="bunit">${opts(['g', 'kg', 'pcs', 'ml', 'l'], r.baseUnit || 'g', uLabel)}</select></label></div>
+    <label><span class="ratio-only">${t('Servings for the usual amount')}</span><span class="fixed-only">${t('Servings')}</span><input name="servings" type="number" min="1" inputmode="numeric" value="${esc(r.servings)}"></label>
+    <div><b class="small">${t('Ingredients')}</b> <span class="meta small">${t('Amounts like 1 1/2 or 1,5 work')}</span>
+    <div id="ings" style="display:grid;gap:8px;margin-top:6px">${(r.ingredients.length ? r.ingredients : [{}]).map(i => ingRow(i, r.baseUnit)).join('')}</div>
+    <button type="button" class="mini" data-x="add" style="margin-top:8px">+ ${t('Ingredient')}</button></div>
+    <div id="preview" class="note small"></div>
     <label>${t('Tags')}<input name="tags" value="${esc((r.tags || []).join(', '))}" placeholder="${t('e.g. quick, vegetarian')}"></label>
     <label>${t('Method')}<textarea name="steps" rows="4">${esc(r.steps || '')}</textarea></label>
     <label class="check"><input type="checkbox" name="fav" ${r.fav ? 'checked' : ''}> ${t('Favourite')}</label>
     <label class="check"><input type="checkbox" name="emergency" ${r.emergency ? 'checked' : ''}> ${t('Emergency meal (made from the reserve)')}</label>
     <label class="check"><input type="checkbox" name="stove" ${r.stove ? 'checked' : ''}> ${t('Needs cooking (camping stove in an emergency)')}</label>`, async (fd, form) => {
-    const rows = [...form.querySelectorAll('.ingrow')];
+    const isRatio = form.elements.ratio.checked, bunit = fd.get('bunit');
+    const ensure = async (name, unit) => byName(name) || ((await act('product.add', Engine.SUB_UNITS.includes(unit)
+      ? { name, unit: 'pcs', subUnit: unit, subCount: SUB_DEFAULT[unit] } // "3 cloves" → a garlic bulb of ~10 cloves
+      : { name, unit })) || {}).product;
+    let baseP = null, baseQty = null;
+    if (isRatio) {
+      const bn = fd.get('bname').trim(); baseQty = parseAmt(fd.get('bqty'));
+      if (!bn) { toast(t('Choose the main ingredient')); return false; }
+      if (!(baseQty > 0)) { toast(t('Check the amount for {x}', { x: bn })); return false; }
+      baseP = await ensure(bn, bunit); if (!baseP) return false;
+    }
     const ingredients = [];
-    for (const row of rows) {
-      const name = row.querySelector('[name=iname]').value.trim(), qty = Number(row.querySelector('[name=iqty]').value);
-      if (!name) continue;
-      let p = byName(name);
-      if (!p) { const res = await act('product.add', { name, unit: row.querySelector('[name=iunit]').value }); if (!res || !res.product) return false; p = res.product; }
-      if (qty > 0) ingredients.push({ productId: p.id, qty });
+    for (const row of form.querySelectorAll('.ingrow')) {
+      const name = row.querySelector('[name=iname]').value.trim(); if (!name) continue;
+      const qty = parseAmt(row.querySelector('[name=iqty]').value);
+      if (!(qty > 0)) { toast(t('Check the amount for {x}', { x: name })); return false; }
+      const unit = row.querySelector('[name=iunit]').value, per = isRatio ? row.querySelector('[name=iper]').value : 'fixed';
+      if (row.querySelector('[name=istock]').checked) {
+        const p = await ensure(name, per === 'part' ? bunit : UNITS.includes(unit) || Engine.SUB_UNITS.includes(unit) ? unit : 'g'); if (!p) return false;
+        // never drop an amount silently: it must convert to how the product is stocked
+        if (Engine.convert(1, per === 'part' ? bunit : unit, p) == null) { toast(t("{x} can't be converted: set its weight per piece (More → Products)", { x: name })); return false; }
+        ingredients.push({ productId: p.id, qty, unit, per, note: row.querySelector('[name=inote]').value.trim() });
+      } else ingredients.push({ productId: null, name, qty, unit, per, note: row.querySelector('[name=inote]').value.trim() });
     }
     const data = { name: fd.get('name'), servings: fd.get('servings'), ingredients, tags: fd.get('tags').split(',').map(x => x.trim()).filter(Boolean),
-      steps: fd.get('steps'), fav: !!fd.get('fav'), emergency: !!fd.get('emergency'), stove: !!fd.get('stove') };
+      steps: fd.get('steps'), fav: !!fd.get('fav'), emergency: !!fd.get('emergency'), stove: !!fd.get('stove'),
+      mode: isRatio ? 'ratio' : 'fixed', baseProductId: baseP && baseP.id, baseUnit: bunit, baseQty };
     if (!data.name.trim()) { toast(t('Name required')); return false; }
     return !!(await act(id ? 'recipe.update' : 'recipe.add', id ? { id, ...data } : data)) || false;
   }, t('Save'), id ? `<button type="button" class="ghost" data-x="delr" style="margin-right:auto;color:var(--red)">${t('Delete')}</button>` : '');
+
+  // live preview: the recipe as it will read for the usual amount
+  const preview = () => {
+    const isRatio = f.elements.ratio.checked; f.classList.toggle('ratio', isRatio);
+    const bunit = f.elements.bunit.value;
+    f.querySelectorAll('[name=iper] option[value=per100]').forEach(o => { o.textContent = t('per 100 {u} main ingredient', { u: uLabel(bunit) }); });
+    const temp = { mode: isRatio ? 'ratio' : 'fixed', baseName: f.elements.bname.value.trim() || t('Main ingredient'), baseUnit: bunit, baseQty: parseAmt(f.elements.bqty.value) || 0,
+      baseProductId: (byName(f.elements.bname.value) || {}).id, servings: Number(f.elements.servings.value) || 1,
+      ingredients: [...f.querySelectorAll('.ingrow')].map(row => { const name = row.querySelector('[name=iname]').value.trim(); const p = row.querySelector('[name=istock]').checked && byName(name);
+        return { name, productId: p ? p.id : null, qty: parseAmt(row.querySelector('[name=iqty]').value), unit: row.querySelector('[name=iunit]').value, per: isRatio ? row.querySelector('[name=iper]').value : 'fixed', note: row.querySelector('[name=inote]').value.trim() }; })
+        .filter(i => i.name && i.qty > 0) };
+    const ls = recipeLines(temp, null);
+    const bad = ls.filter(l => { const p = l.productId && P(l.productId); return p && Engine.convert(l.qty, l.unit, p) == null; });
+    $('#preview').hidden = !ls.length;
+    $('#preview').innerHTML = (isRatio ? `<b>${esc(t('For {x}:', { x: lineText(ls[0]) }))}</b>` : '') + linesHtml(isRatio ? ls.slice(1) : ls) +
+      bad.map(l => `<div class="bad">${esc(t("{x} can't be converted: set its weight per piece (More → Products)", { x: l.name }))}</div>`).join('');
+  };
   f.addEventListener('click', async e => {
     const x = e.target.dataset.x;
-    if (x === 'add') { f.querySelector('#ings').insertAdjacentHTML('beforeend', ingRow()); }
-    if (x === 'del') { e.target.closest('.ingrow').remove(); }
+    if (x === 'add') { f.querySelector('#ings').insertAdjacentHTML('beforeend', ingRow({}, f.elements.bunit.value)); preview(); }
+    if (x === 'del') { e.target.closest('.ingrow').remove(); preview(); }
     if (x === 'delr' && e.target.dataset.sure) { if (await act('recipe.delete', { id })) closeDlg(); }
     else if (x === 'delr') { e.target.dataset.sure = 1; e.target.textContent = t('Tap again to delete'); }
   });
   f.addEventListener('input', e => {
-    if (e.target.name !== 'iname') return;
-    const p = byName(e.target.value), sel = e.target.closest('.ingrow').querySelector('[name=iunit]');
-    sel.disabled = !!p; if (p) sel.value = p.unit;
+    if (e.target.name === 'iname') {
+      const p = byName(e.target.value); const row = e.target.closest('.ingrow');
+      if (p) { row.querySelector('[name=istock]').checked = true; if (!f.elements.ratio.checked || row.querySelector('[name=iper]').value !== 'part') row.querySelector('[name=iunit]').value = p.unit; }
+    }
+    if (e.target.name === 'bname') { const p = byName(e.target.value); if (p && ['g', 'kg', 'pcs', 'ml', 'l'].includes(p.unit)) f.elements.bunit.value = p.unit; }
+    preview();
   });
+  f.addEventListener('change', preview);
+  preview();
+}
+// Change how much of the main ingredient a planned meal uses; everything else follows.
+function baseDlg(id) {
+  const e = ST.db.plan.find(x => x.id === id), r = R(e.recipeId);
+  const f = openDlg(`<h2>${esc(r.name)}</h2><label>${esc(t('How much {x}?', { x: pName(r.baseProductId) }))} (${uLabel(r.baseUnit)})<input name="base" inputmode="decimal" value="${esc(nf(e.base || r.baseQty))}"></label><div id="bprev" class="note small"></div>`,
+    async fd => { const b = parseAmt(fd.get('base')); if (!(b > 0)) { toast(t('Check the amount for {x}', { x: pName(r.baseProductId) })); return false; } return !!(await act('plan.setBase', { id, base: b })) || false; });
+  const upd = () => { const b = parseAmt(f.elements.base.value); $('#bprev').innerHTML = b > 0 ? linesHtml(recipeLines(r, { base: b }).slice(1)) + `<div class="meta">${t('{n} servings', { n: nf(Math.round(mealServings(r, { base: b }) * 10) / 10) })}</div>` : ''; };
+  f.elements.base.addEventListener('input', upd); upd();
 }
 
 /* ---------- RESERVE (emergency) ---------- */
@@ -472,7 +598,7 @@ function vReserve() {
   ${emRecipes.length ? emRecipes.map(r => `<div class="row tight"><span class="grow">${esc(r.name)}${r.stove ? ` <span class="badge b-soft">${t('needs a stove')}</span>` : ''}</span><span class="badge ${em.madeCount[r.id] ? 'b-ok' : 'b-no'}">${t('{n}× from the reserve', { n: em.madeCount[r.id] || 0 })}</span></div>`).join('')
     : `<div class="note">${t('Mark recipes as emergency meals: long-lasting food you keep on the emergency shelf.')}</div>`}
   <div class="group"><span>${t('On the emergency shelf')}</span><span>${emLots.length}</span></div>
-  ${emLots.map(l => { const p = P(l.productId) || {}; return `<div class="item st-${bbState(l.bb)}"><div><b>${esc(p.name)}</b> <span class="meta">${fq(l.qty, p.unit)}</span></div><div class="when">${rel(l.bb) || `<button class="mini" data-a="editlot" data-id="${l.id}">${t('Add date')}</button>`}</div></div>`; }).join('') || `<div class="empty">${t('Nothing on the emergency shelf yet.')}</div>`}
+  ${emLots.map(l => { const p = P(l.productId) || {}; return `<div class="item st-${bbState(l.bb)}"><div><b>${esc(p.name)}</b> <span class="meta">${fqP(l.qty, p)}</span></div><div class="when">${rel(l.bb) || `<button class="mini" data-a="editlot" data-id="${l.id}">${t('Add date')}</button>`}</div></div>`; }).join('') || `<div class="empty">${t('Nothing on the emergency shelf yet.')}</div>`}
   <div class="group"><span>${t('Kit checklist')}</span><button class="mini" data-a="kitadd">+ ${t('Item')}</button></div>
   <div class="card" style="padding:2px 6px">${kit.map(k => { const st = k.bb ? bbState(k.bb) : ''; const due = k.bb && diff(today(), k.bb) <= S.rotationDays;
     return `<div class="shop"><input type="checkbox" data-a="kithave" data-id="${k.id}" ${k.have ? 'checked' : ''} aria-label="${esc(k.name || t(k.key))}"><div class="nm"><b>${esc(k.name || t(k.key))}</b>${k.qty ? ` <span class="meta small">${esc(k.qty)}</span>` : ''}${k.bb ? ` <span class="badge ${due ? (st === 'past' ? 'b-no' : 'b-soon') : 'b-soft'}">${rel(k.bb)}</span>` : ''}</div><button class="mini" data-a="kitedit" data-id="${k.id}">${t('Edit')}</button></div>`; }).join('')}</div>`;
@@ -505,14 +631,14 @@ function vMore() {
   ${top.length ? `<div class="bars" style="margin-top:8px">${top.map(([pid, n]) => `<div class="r"><span>${esc(pName(pid))}</span><span><i style="width:${n / top[0][1] * 100}%"></i></span><span>${n}</span></div>`).join('')}</div>
   <p class="meta small">${Object.entries(byReason).map(([r, n]) => `${esc(t('reason.' + r))}: ${n}`).join(' · ')}</p>` : `<p class="meta">${t('Nothing binned this month.')}</p>`}</div>
   <h2 style="margin-top:22px">${t('Products')}</h2><div class="card" style="padding:2px 6px">${[...ST.db.products].sort((a, b) => a.name.localeCompare(b.name)).map(p => { const s = ST.derived.stock[p.id];
-    return `<div class="shop" data-a="prod" data-id="${p.id}" style="cursor:pointer"><div class="nm"><b>${esc(p.name)}</b> <span class="meta small">${fq(s.onHand, p.unit)}${p.min ? ' · min ' + fq(p.min, p.unit) : ''}${p.emergencyQty ? ' · ★ ' + fq(p.emergencyQty, p.unit) : ''}</span></div><span class="meta">›</span></div>`; }).join('') || `<div class="empty" style="border:0">${t('No products yet.')}</div>`}</div>
+    return `<div class="shop" data-a="prod" data-id="${p.id}" style="cursor:pointer"><div class="nm"><b>${esc(p.name)}</b> <span class="meta small">${fqP(s.onHand, p)}${p.min ? ' · min ' + fq(p.min, p.unit) : ''}${p.emergencyQty ? ' · ★ ' + fq(p.emergencyQty, p.unit) : ''}</span></div><span class="meta">›</span></div>`; }).join('') || `<div class="empty" style="border:0">${t('No products yet.')}</div>`}</div>
   <h2 style="margin-top:22px">${t('Places')}</h2><div class="card" style="padding:2px 6px">${ST.db.locations.map(l => `<div class="shop"><div class="nm"><b>${esc(locName(l))}</b>${l.emergency ? ` <span class="badge b-sky">${t('Emergency')}</span>` : ''}</div><button class="mini" data-a="loc" data-id="${l.id}">${t('Edit')}</button></div>`).join('')}</div>
   <div class="row"><button class="mini" data-a="loc">+ ${t('Place')}</button></div>
   <h2 style="margin-top:22px">${t('Household')}</h2><div class="card" style="padding:2px 6px">${ST.db.users.map(u => `<div class="shop"><div class="nm"><b>${esc(u.name)}</b> ${u.id === me ? `<span class="badge b-ok">${t('this phone')}</span>` : ''}</div><span class="meta">${u.lang.toUpperCase()}</span></div>`).join('')}</div>
   <div class="row"><label class="grow">${t('Language on this phone')}<select id="langSel">${opts(['nl', 'en'], lang, x => x === 'nl' ? 'Nederlands' : 'English')}</select></label><button class="ghost" data-a="switchuser" style="align-self:end">${t('Switch person')}</button></div>
-  <h2 style="margin-top:22px">${t('Emergency settings')}</h2><form id="setF" class="card"><div class="grid3">
-    <label>${t('People')}<input name="people" type="number" min="1" value="${S.people}"></label><label>${t('Days')}<input name="days" type="number" min="1" value="${S.days}"></label><label>${t('Meals a day')}<input name="mealsPerDay" type="number" min="1" value="${S.mealsPerDay}"></label>
-    <label>${t('Rotate days before expiry')}<input name="rotationDays" type="number" min="7" value="${S.rotationDays}"></label><label class="wide">${t('Water l/person/day')}<input name="waterPerPersonDay" type="number" step="0.5" min="1" value="${S.waterPerPersonDay}"></label></div>
+  <h2 style="margin-top:22px">${t('Emergency settings')}</h2><form id="setF" class="card"><div class="grid3 fields">
+    <label>${t('People')}<input name="people" type="number" min="1" inputmode="numeric" value="${S.people}"></label><label>${t('Days')}<input name="days" type="number" min="1" inputmode="numeric" value="${S.days}"></label><label class="wide">${t('Meals a day')}<input name="mealsPerDay" type="number" min="1" inputmode="numeric" value="${S.mealsPerDay}"></label></div>
+    <div class="grid2 fields" style="margin-top:8px"><label>${t('Rotate (days before expiry)')}<input name="rotationDays" type="number" min="7" inputmode="numeric" value="${S.rotationDays}"></label><label>${t('Water l/person/day')}<input name="waterPerPersonDay" type="number" step="0.5" min="1" inputmode="decimal" value="${S.waterPerPersonDay}"></label></div>
     <div class="row end"><button class="btn">${t('Save')}</button></div></form>
   <h2 style="margin-top:22px">${t('History')}</h2><div class="card small" style="padding:6px 12px">${hist.map(x => `<div style="padding:3px 0;border-bottom:1px solid var(--line)"><span class="meta">${fmtD(x.date || x.ts.slice(0, 10))}</span> ${esc(userName(x.userId))} ${esc(t(verb[x.action] || x.action))} <b>${esc(x.recipeId ? (R(x.recipeId) || {}).name : pName(x.productId))}</b>${x.reason ? ' · ' + esc(t('reason.' + x.reason)) : ''}</div>`).join('') || t('Nothing yet.')}</div>
   <div class="row"><a class="ghost" href="/api/export" download>${t('Download backup')}</a></div>
@@ -556,6 +682,7 @@ document.addEventListener('click', async e => {
     case 'confirm': openDlg(`<h2>${t('Confirm this week?')}</h2><p>${t('After confirming, every meal on it must be cooked this week. You can still move meals around and add more, but not remove them. Missing ingredients go on the shopping list.')}</p>`, async () => { await act('week.confirm', { week: wk }); }, t('Confirm week')); break;
     case 'mv': act('plan.move', { id, dir: Number(el.dataset.d) }); break;
     case 'cook': cookDlg(id); break;
+    case 'base': baseDlg(id); break;
     case 'rmmeal': act('plan.remove', { id }); break;
     case 'addstock': addStockDlg(); break;
     case 'scan': scanDlg(); break;
@@ -595,6 +722,8 @@ document.addEventListener('submit', async e => {
   if (ids.length) await act('plan.addMany', { week: UI.week || ST.derived.week, recipeIds: ids, sort: true }); else render();
 });
 $('#who').onclick = () => { location.hash = 'more'; };
+// Switch language instantly; remembered on this phone and for this person.
+$('#langBtn').onclick = () => { lang = lang === 'nl' ? 'en' : 'nl'; LS.set('lang', lang); render(); if (me) act('user.update', { id: me, lang }); };
 
 /* ---------- start ---------- */
 if (ST) index();

@@ -60,6 +60,7 @@ const num = (v, d = 0) => { const n = Number(v); return v !== '' && v !== null &
 const str = (v, max = 200) => String(v ?? '').trim().slice(0, max);
 const date = v => (/^\d{4}-\d{2}-\d{2}$/.test(v || '') ? v : '');
 const UNITS = ['pcs', 'g', 'kg', 'ml', 'l', 'pack', 'tin', 'jar', 'bag', 'bottle'];
+const RECIPE_UNITS = [...UNITS, 'tbsp', 'tsp', ...E.SUB_UNITS];
 const REASONS = ['off', 'past', 'mould', 'forgot', 'other'];
 const now = () => new Date().toISOString();
 function log(entry, userId) {
@@ -75,17 +76,32 @@ function cleanProduct(a, p = {}) {
     min: Math.max(0, num(a.min ?? p.min, 0)),
     emergencyQty: Math.max(0, num(a.emergencyQty ?? p.emergencyQty, 0)),
     water: a.water !== undefined ? !!a.water : !!p.water,
+    pieceG: Math.max(0, num(a.pieceG ?? p.pieceG, 0)),   // weight of one piece, to convert grams ↔ pieces
+    spoonG: Math.max(0, num(a.spoonG ?? p.spoonG, 0)),   // grams per tablespoon (0 = 15 g)
+    subUnit: a.subUnit !== undefined ? (E.SUB_UNITS.includes(a.subUnit) ? a.subUnit : '') : (p.subUnit || ''), // e.g. a bulb splits into cloves
+    subCount: Math.max(0, num(a.subCount ?? p.subCount, 0)),
     locationId: db.locations.some(l => l.id === a.locationId) ? a.locationId : (p.locationId || ''),
     barcodes: Array.isArray(a.barcodes) ? [...new Set(a.barcodes.map(b => str(b, 40)).filter(Boolean))].slice(0, 20) : (p.barcodes || [])
   };
 }
 function cleanRecipe(a, r = {}) {
+  const ratio = a.mode === 'ratio' && db.products.some(p => p.id === a.baseProductId);
+  const per = v => (ratio && (v === 'part' || v === 'per100') ? v : 'fixed');
   return {
     ...r,
     name: str(a.name, 100),
     servings: Math.max(1, num(a.servings, 3)),
-    ingredients: (Array.isArray(a.ingredients) ? a.ingredients : []).filter(i => i && db.products.some(p => p.id === i.productId) && num(i.qty) > 0)
-      .slice(0, 60).map(i => ({ productId: i.productId, qty: num(i.qty) })),
+    mode: ratio ? 'ratio' : 'fixed',
+    baseProductId: ratio ? a.baseProductId : null,
+    baseUnit: ratio && UNITS.includes(a.baseUnit) ? a.baseUnit : 'g',
+    baseQty: ratio ? Math.max(0.001, num(a.baseQty, 500)) : null,
+    // productId null = not taken from stock (tap water…), shown by name only
+    ingredients: (Array.isArray(a.ingredients) ? a.ingredients : [])
+      .filter(i => i && num(i.qty) > 0 && (db.products.some(p => p.id === i.productId) || (!i.productId && str(i.name, 60))))
+      .slice(0, 60).map(i => ({
+        productId: i.productId || null, name: i.productId ? '' : str(i.name, 60), qty: num(i.qty), note: str(i.note, 40),
+        unit: RECIPE_UNITS.includes(i.unit) ? i.unit : null, per: per(i.per)
+      })),
     tags: (Array.isArray(a.tags) ? a.tags : []).map(t => str(t, 30)).filter(Boolean).slice(0, 10),
     steps: str(a.steps, 5000),
     emergency: !!a.emergency,
@@ -119,7 +135,7 @@ const actions = {
   'product.update'(a) { const p = find(db.products, a.id, 'Product'); const c = cleanProduct(a, p); need(c.name, 'Name required'); Object.assign(p, c); },
   'product.delete'(a) {
     need(!db.lots.some(l => l.productId === a.id), 'This product is still in stock');
-    need(!db.recipes.some(r => r.ingredients.some(i => i.productId === a.id)), 'This product is used in a recipe');
+    need(!db.recipes.some(r => r.baseProductId === a.id || r.ingredients.some(i => i.productId === a.id)), 'This product is used in a recipe');
     db.products = db.products.filter(p => p.id !== a.id); db.shopping = db.shopping.filter(s => s.productId !== a.id);
   },
 
@@ -152,9 +168,19 @@ const actions = {
     const wk = date(a.week); need(wk && wk === E.monday(wk), 'Bad week'); E.ensureWeek(db, wk);
     const r = find(db.recipes, a.recipeId, 'Recipe');
     const order = Math.max(-1, ...db.plan.filter(e => e.week === wk).map(e => e.order)) + 1;
-    db.plan.push({ id: E.uid(), week: wk, recipeId: r.id, servings: Math.max(1, num(a.servings, r.servings)), status: 'planned', order });
+    const entry = { id: E.uid(), week: wk, recipeId: r.id, servings: Math.max(1, num(a.servings, r.servings)), status: 'planned', order };
+    if (r.mode === 'ratio') {
+      const today = E.todayISO(), d = E.compute(db, today); // includes meals added a moment ago
+      entry.base = num(a.base) > 0 ? num(a.base) : E.defaultBase(db, r, new Map(Object.entries(d.rem)), E.usableFor(db, today));
+    }
+    db.plan.push(entry);
   },
-  'plan.addMany'(a) { for (const id of (Array.isArray(a.recipeIds) ? a.recipeIds : []).slice(0, 14)) actions['plan.add']({ week: a.week, recipeId: id }); if (a.sort) actions['plan.sort']({ week: a.week }); },
+  'plan.addMany'(a) {
+    const items = (Array.isArray(a.items) ? a.items : (Array.isArray(a.recipeIds) ? a.recipeIds.map(recipeId => ({ recipeId })) : [])).slice(0, 14);
+    for (const it of items) actions['plan.add']({ week: a.week, recipeId: it.recipeId, base: it.base });
+    if (a.sort) actions['plan.sort']({ week: a.week });
+  },
+  'plan.setBase'(a) { const e = find(db.plan, a.id, 'Meal'); need(e.status === 'planned', 'Already cooked'); const b = num(a.base); need(b > 0, 'Amount must be more than 0'); e.base = b; },
   'plan.remove'(a) {
     const e = find(db.plan, a.id, 'Meal'); need(!(db.weeks[e.week] || {}).confirmed, 'This week is confirmed: meals can be moved, not removed');
     db.plan = db.plan.filter(x => x.id !== e.id); E.renumber(db, e.week);
@@ -247,6 +273,10 @@ const files = new Map();
     });
   }
 })(PUBLIC);
+{ // the planning engine is shared with the phones
+  const body = fs.readFileSync(path.join(__dirname, 'engine.js'));
+  files.set('/engine.js', { body, type: TYPES['.js'], gz: zlib.gzipSync(body, { level: 9 }), etag: '"' + crypto.createHash('sha1').update(body).digest('base64url').slice(0, 16) + '"' });
+}
 
 const gzipOk = req => /\bgzip\b/.test(req.headers['accept-encoding'] || '');
 function send(req, res, code, obj) {

@@ -77,4 +77,33 @@ d = E.compute(db, today);
 assert.strictEqual(d.emergency.servings, 6);
 assert.strictEqual(d.emergency.servingsNeeded, 63);
 assert.strictEqual(d.emergency.water, 30);
+// Ratio recipe (red cabbage): 1 part cabbage, 1 part apples, 1 part water (tap), 1½ tbsp sugar per 100 g cabbage.
+const db2 = E.freshDb();
+db2.products.push(
+  { id: 'cab', name: 'Red cabbage', unit: 'g', packSize: 1, barcodes: [] },
+  { id: 'app', name: 'Apples', unit: 'pcs', pieceG: 150, packSize: 1, barcodes: [] },
+  { id: 'sug', name: 'Sugar', unit: 'g', spoonG: 12.5, packSize: 1000, barcodes: [] });
+const kool = { id: 'rk', name: 'Rode kool', servings: 4, mode: 'ratio', baseProductId: 'cab', baseUnit: 'g', baseQty: 600, ingredients: [
+  { productId: 'app', qty: 1, per: 'part' },
+  { productId: null, name: 'Water', qty: 1, unit: 'ml', per: 'part' },
+  { productId: 'sug', qty: 1.5, unit: 'tbsp', per: 'per100' }] };
+db2.recipes.push(kool);
+const n = Object.fromEntries(E.needs(db2, kool, { base: 300 }).map(x => [x.productId, x.qty]));
+assert.deepStrictEqual(n, { cab: 300, app: 2, sug: 56.25 }, '300 g cabbage → 300 g apples = 2 pieces, 4½ tbsp sugar = 56.25 g, water not from stock');
+assert.strictEqual(E.convert(1, 'tbsp', { unit: 'ml' }), 15);
+assert.strictEqual(E.convert(1, 'kg', { unit: 'g' }), 1000);
+assert.strictEqual(E.convert(1, 'pcs', { unit: 'g' }), null, 'pieces without a weight cannot become grams');
+db2.lots.push({ id: 'c1', productId: 'cab', qty: 450, bb: '2026-12-01', locationId: 'fridge' }, { id: 'c2', productId: 'cab', qty: 900, bb: '2026-12-20', locationId: 'fridge' });
+assert.strictEqual(E.defaultBase(db2, kool, new Map(), E.usableFor(db2, today)), 450, 'defaults to the first cabbage in stock');
+db2.plan.push({ id: 'p1', week: wk, recipeId: 'rk', base: 450, status: 'planned', order: 0 });
+const d2 = E.compute(db2, today);
+assert.deepStrictEqual(d2.entries.p1.missing.map(m => [m.productId, m.qty]), [['app', 3], ['sug', 84.375]]);
+// Garlic: stocked as bulbs, recipes use cloves.
+const garlic = { id: 'gar', unit: 'pcs', subUnit: 'clove', subCount: 10 };
+assert.strictEqual(E.convert(3, 'clove', garlic), 0.3);
+assert.strictEqual(E.convert(3, 'clove', { unit: 'pcs' }), null, 'no cloves without knowing how many per bulb');
+assert.strictEqual(E.convert(2, 'clove', { unit: 'g', subUnit: 'clove', subCount: 10, pieceG: 50 }), 10);
+// "1 small can (160 g)": stock kept as 400 g tins → 0.4 tin.
+assert.strictEqual(E.convert(160, 'g', { unit: 'tin', pieceG: 400 }), 0.4);
+assert.strictEqual(E.convert(3, 'clove', { unit: 'pcs', subUnit: 'clove', subCount: 10 }), 0.3);
 console.log('engine tests passed');

@@ -1,6 +1,6 @@
 {
   "name": "miseenplace",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Household pantry, weekly menu, shopping list and emergency stock — self-hosted.",
   "main": "src/server.js",
   "scripts": {

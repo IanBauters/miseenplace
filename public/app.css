@@ -101,8 +101,18 @@ dialog{border:0;border-radius:20px;padding:0;width:min(580px,calc(100vw - 16px))
 dialog::backdrop{background:rgba(20,10,8,.5)}
 dialog form{padding:16px;display:grid;gap:11px}
 dialog h2{font-size:22px;margin:0}
-.ingrow{display:grid;grid-template-columns:minmax(0,1fr) 84px 86px 38px;gap:6px;align-items:center}
-@media(max-width:420px){.ingrow{grid-template-columns:minmax(0,1fr) 70px 74px 36px}}
+.ingrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px;border:1.5px solid var(--line);border-radius:12px}
+.ingrow [name=iname]{flex:1 1 70%;width:auto}
+.ingrow [name=iqty]{flex:0 0 84px;width:84px}
+.ingrow [name=iunit]{flex:0 0 96px;width:96px}
+.ingrow [name=inote]{flex:1 1 140px;width:auto}
+.ingrow [name=iper]{flex:1 1 150px;width:auto}
+.ingrow .istock{flex:1 1 100%;min-height:30px}
+form:not(.ratio) .ratio-only{display:none}form.ratio .fixed-only{display:none}
+.lines{margin:4px 0 6px;padding-left:20px}.lines li{margin:2px 0}.lines li.main{font-weight:600}
+.note .bad{color:var(--red);margin-top:4px}
+/* labels of different length: keep the input boxes in line */
+.fields>label{display:flex;flex-direction:column;gap:4px}.fields>label>input{margin-top:auto}
 video{width:100%;border-radius:14px;background:#000;max-height:50vh;object-fit:cover}
 .picklist{max-height:50vh;overflow:auto;border:1.5px solid var(--line);border-radius:12px}
 .picklist button{display:flex;width:100%;text-align:left;justify-content:space-between;gap:8px;background:none;border:0;border-bottom:1px solid var(--line);padding:11px 12px;cursor:pointer;min-height:48px;align-items:center}
