@@ -84,9 +84,34 @@ function cleanProduct(a, p = {}) {
     barcodes: Array.isArray(a.barcodes) ? [...new Set(a.barcodes.map(b => str(b, 40)).filter(Boolean))].slice(0, 20) : (p.barcodes || [])
   };
 }
+// Sections → steps → the ingredients each step uses (from the recipe's full list), with amount and preparation.
+function cleanSections(list, ingredients) {
+  const ids = new Set(ingredients.map(i => i.id));
+  return (Array.isArray(list) ? list : []).slice(0, 20).map(sec => ({
+    title: str(sec && sec.title, 80),
+    steps: (Array.isArray(sec && sec.steps) ? sec.steps : []).slice(0, 40).map(st => ({
+      text: str(st && st.text, 3000),
+      uses: (Array.isArray(st && st.uses) ? st.uses : []).filter(u => u && ids.has(u.iid)).slice(0, 40).map(u => ({
+        iid: u.iid, qty: !u.taste && num(u.qty) > 0 ? num(u.qty) : null, unit: RECIPE_UNITS.includes(u.unit) ? u.unit : null, prep: str(u.prep, 80), taste: !!u.taste
+      }))
+    })).filter(st => st.text || st.uses.length)
+  })).filter(sec => sec.title || sec.steps.length);
+}
 function cleanRecipe(a, r = {}) {
   const ratio = a.mode === 'ratio' && db.products.some(p => p.id === a.baseProductId);
   const per = v => (ratio && (v === 'part' || v === 'per100') ? v : 'fixed');
+  const seen = new Set();
+  const ingredients = (Array.isArray(a.ingredients) ? a.ingredients : [])
+    .filter(i => i && (db.products.some(p => p.id === i.productId) || (!i.productId && str(i.name, 60))))
+    .slice(0, 60).map(i => {
+      let id = str(i.id, 24).replace(/[^\w-]/g, ''); if (!id || seen.has(id)) id = E.uid(); seen.add(id);
+      const taste = !!i.taste || !(num(i.qty) > 0);
+      return { id, productId: i.productId || null, name: i.productId ? '' : str(i.name, 60), qty: taste ? null : num(i.qty), taste,
+        note: str(i.note, 40), unit: taste ? null : RECIPE_UNITS.includes(i.unit) ? i.unit : null, per: per(i.per) };
+    });
+  // legacy: a recipe saved before sections existed keeps its method as one step
+  const sections = Array.isArray(a.sections) ? a.sections : (str(a.steps || r.steps, 5000) ? [{ title: '', steps: [{ text: str(a.steps || r.steps, 5000), uses: [] }] }] : []);
+  a = { ...a, sections };
   return {
     ...r,
     name: str(a.name, 100),
@@ -95,15 +120,11 @@ function cleanRecipe(a, r = {}) {
     baseProductId: ratio ? a.baseProductId : null,
     baseUnit: ratio && UNITS.includes(a.baseUnit) ? a.baseUnit : 'g',
     baseQty: ratio ? Math.max(0.001, num(a.baseQty, 500)) : null,
-    // productId null = not taken from stock (tap water…), shown by name only
-    ingredients: (Array.isArray(a.ingredients) ? a.ingredients : [])
-      .filter(i => i && num(i.qty) > 0 && (db.products.some(p => p.id === i.productId) || (!i.productId && str(i.name, 60))))
-      .slice(0, 60).map(i => ({
-        productId: i.productId || null, name: i.productId ? '' : str(i.name, 60), qty: num(i.qty), note: str(i.note, 40),
-        unit: RECIPE_UNITS.includes(i.unit) ? i.unit : null, per: per(i.per)
-      })),
+    // productId null = not taken from stock (tap water…), shown by name only; no amount = to taste
+    ingredients,
+    sections: cleanSections(a.sections, ingredients),
     tags: (Array.isArray(a.tags) ? a.tags : []).map(t => str(t, 30)).filter(Boolean).slice(0, 10),
-    steps: str(a.steps, 5000),
+    steps: '', // older recipes kept their method as one text; it now lives in the sections
     emergency: !!a.emergency,
     stove: !!a.stove,
     fav: !!a.fav

@@ -59,14 +59,14 @@ function needs(db, r, e) {
     const base = baseOf(r, e);
     push(r.baseProductId, base, r.baseUnit);
     for (const i of r.ingredients || []) {
-      if (!i.productId) continue; // not from stock (tap water…)
+      if (!i.productId || i.taste || !(i.qty > 0)) continue; // not from stock (tap water…) or to taste
       if (i.per === 'part') push(i.productId, i.qty * base, r.baseUnit);
       else if (i.per === 'per100') push(i.productId, i.qty * base / 100, i.unit);
       else push(i.productId, i.qty, i.unit);
     }
   } else {
     const f = (e && e.servings || r.servings || 1) / (r.servings || 1);
-    for (const i of r.ingredients || []) if (i.productId) push(i.productId, i.qty * f, i.unit);
+    for (const i of r.ingredients || []) if (i.productId && !i.taste && i.qty > 0) push(i.productId, i.qty * f, i.unit);
   }
   // one line per product
   const merged = new Map();
@@ -177,6 +177,9 @@ function compute(db, today) {
         }
         if (need > 1e-9) info.missing.push({ productId: ing.productId, qty: need });
       }
+      for (const pid of presence(r)) {
+        if (!(byProd.get(pid) || []).some(l => usable(l) && l.qty > 0)) info.missing.push({ productId: pid, qty: 0 }); // qty 0 = none in the house
+      }
     }
     entries[e.id] = info;
   }
@@ -243,7 +246,10 @@ function syncAuto(db, today, derived) {
   };
   for (const e of db.plan) {
     if (e.status !== 'planned' || !(db.weeks[e.week] || {}).confirmed) continue;
-    for (const m of (derived.entries[e.id] || {}).missing || []) add(m.productId, m.qty, { type: 'meal', recipeId: e.recipeId, date: derived.entries[e.id].date });
+    for (const m of (derived.entries[e.id] || {}).missing || []) {
+      if (m.qty === 0 && want.has(m.productId)) continue; // one pack of salt is enough for every meal that needs it
+      add(m.productId, m.qty > 0 ? m.qty : (prods.get(m.productId) || {}).packSize || 1, { type: 'meal', recipeId: e.recipeId, date: derived.entries[e.id].date });
+    }
   }
   for (const p of db.products) {
     const s = derived.stock[p.id];
@@ -271,6 +277,12 @@ function syncAuto(db, today, derived) {
     changed = true;
   }
   return changed;
+}
+
+// "To taste" ingredients (salt, basil…) are never counted: they only need to be in the house.
+function presence(r) {
+  const counted = new Set((r.ingredients || []).filter(i => i.productId && !i.taste && i.qty > 0).map(i => i.productId));
+  return [...new Set((r.ingredients || []).filter(i => i.productId && (i.taste || !(i.qty > 0)) && !counted.has(i.productId)).map(i => i.productId))];
 }
 
 // Default amount of the main ingredient for a ratio recipe: what's left of the first-expiring
@@ -352,7 +364,7 @@ function usableFor(db, today) {
   return l => !em.has(l.locationId) || (!!l.bb && diff(today, l.bb) <= db.settings.rotationDays);
 }
 
-const API = { SUB_UNITS, COUNTED, freshDb, needs, convert, defaultBase, usableFor, ensureWeek, assignDates, renumber, carryOver, compute, syncAuto, suggest,
+const API = { SUB_UNITS, COUNTED, freshDb, needs, presence, convert, defaultBase, usableFor, ensureWeek, assignDates, renumber, carryOver, compute, syncAuto, suggest,
   todayISO, addDays, monday, round, uid, DAY_TYPES };
 if (typeof module === 'object' && module.exports) module.exports = API; else root.Engine = API;
 })(typeof self !== 'undefined' ? self : globalThis);

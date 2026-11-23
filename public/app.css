@@ -101,14 +101,38 @@ dialog{border:0;border-radius:20px;padding:0;width:min(580px,calc(100vw - 16px))
 dialog::backdrop{background:rgba(20,10,8,.5)}
 dialog form{padding:16px;display:grid;gap:11px}
 dialog h2{font-size:22px;margin:0}
-.ingrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px;border:1.5px solid var(--line);border-radius:12px}
-.ingrow [name=iname]{flex:1 1 70%;width:auto}
-.ingrow [name=iqty]{flex:0 0 84px;width:84px}
-.ingrow [name=iunit]{flex:0 0 96px;width:96px}
-.ingrow [name=inote]{flex:1 1 140px;width:auto}
-.ingrow [name=iper]{flex:1 1 150px;width:auto}
-.ingrow .istock{flex:1 1 100%;min-height:30px}
-form:not(.ratio) .ratio-only{display:none}form.ratio .fixed-only{display:none}
+/* full-screen dialogs: recipe builder and cook mode */
+dialog.full{width:100vw;max-width:100vw;height:100dvh;max-height:100dvh;margin:0;border-radius:0;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+@media(min-width:820px){dialog.full{width:min(780px,96vw);height:94dvh;max-height:94dvh;margin:auto;border-radius:20px;padding:0}}
+.builder form{padding-bottom:24px}
+.bname{font-size:22px;font-weight:700;border-width:0 0 2px;border-radius:0;padding-left:2px}
+.bsec{margin:14px 0 2px;font-size:19px}
+.paste summary,.more summary{cursor:pointer;font-weight:600;color:var(--tomato);min-height:40px;display:flex;align-items:center}
+.ings{display:grid;gap:8px;margin:8px 0}
+.ing{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px;border:1.5px solid var(--line);border-radius:12px}
+.ing [data-f=name]{flex:1 1 70%;width:auto;font-weight:600}
+.ing [data-f=qtyText]{flex:0 0 88px;width:88px}
+.ing [data-f=unit]{flex:0 0 108px;width:108px}
+.ing [data-f=per]{flex:1 1 160px;width:auto}
+.ing [data-f=note]{flex:1 1 150px;width:auto}
+.ingfoot{flex:1 1 100%;display:flex;align-items:center;gap:6px;flex-wrap:wrap}.ingfoot .check{min-height:30px;margin-right:auto}
+.sec{border:1.5px solid var(--line);border-radius:14px;padding:10px;margin:10px 0;background:var(--soft)}
+.sec>.row input{font-weight:700}
+.step{background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:10px;margin:8px 0;display:grid;gap:6px}
+.use{display:flex;flex-wrap:wrap;gap:6px;align-items:center;border-left:4px solid var(--basil);padding:4px 0 4px 8px}
+.use b{flex:1 1 100%}.use [data-uf=qtyText]{flex:0 0 110px;width:110px}.use [data-uf=prep]{flex:1 1 140px;width:auto}
+.adduse{color:var(--tomato);font-weight:600}
+.cook{display:flex;flex-direction:column;height:100%}
+.cook header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1.5px solid var(--line);font-size:18px}
+.cookbody{flex:1;overflow:auto;padding:16px 18px;font-size:20px;line-height:1.5}
+.cookbody h2{font-size:28px}
+.check.big{font-size:19px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)}.check.big input{width:26px;height:26px;margin-top:2px}
+.sectitle{font-size:15px;font-weight:700;color:var(--tomato);text-transform:none;margin:0 0 6px}
+.steplist{background:var(--soft);border-radius:14px;padding:12px 16px 12px 34px;margin:0 0 14px;font-size:19px}
+.steptext{font-size:23px;line-height:1.45;margin:0 0 16px}
+.timers{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px}.timers:empty{display:none}
+.cook footer{display:flex;justify-content:space-between;gap:10px;padding:12px 16px;border-top:1.5px solid var(--line)}
+.cook footer button{flex:1;min-height:52px;font-size:18px}
 .lines{margin:4px 0 6px;padding-left:20px}.lines li{margin:2px 0}.lines li.main{font-weight:600}
 .note .bad{color:var(--red);margin-top:4px}
 /* labels of different length: keep the input boxes in line */

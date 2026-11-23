@@ -56,6 +56,13 @@ async function act(type, data = {}) {
   assert.strictEqual(s.db.lots[0].qty, 100, '300 g taken out of stock');
   s = await act('stock.bin', { id: s.db.lots[0].id, reason: '<img src=x onerror=alert(1)>' });
   assert.strictEqual(s.db.log.find(x => x.action === 'bin').reason, 'other', 'unknown reasons are normalised');
+  // step recipe: sections keep only known ingredients; "to taste" has no amount
+  const salt = (await act('product.add', { name: 'Salt', unit: 'g', packSize: 500 })).result.product;
+  const soup = (await act('recipe.add', { name: 'Soup', servings: 3,
+    ingredients: [{ id: 'a1', productId: pasta.id, qty: 50, unit: 'g' }, { id: 'a2', productId: salt.id, qty: null, taste: true }, { id: 'a3', name: 'Water', qty: 1, unit: 'l' }],
+    sections: [{ title: 'Soup', steps: [{ text: 'Simmer for 10 minutes', uses: [{ iid: 'a1', qty: 50, prep: 'small' }, { iid: 'a2', taste: true }, { iid: 'nope' }] }] }] })).result.recipe;
+  assert.deepStrictEqual(soup.sections[0].steps[0].uses.map(u => [u.iid, u.qty, u.taste]), [['a1', 50, false], ['a2', null, true]], 'unknown step ingredients dropped');
+  assert.deepStrictEqual(soup.ingredients.map(i => [i.id, i.qty, i.taste, i.productId === null]), [['a1', 50, false, false], ['a2', null, true, false], ['a3', 1, false, true]]);
   const sug = await (await post('/api/suggest', { week: wk })).json();
   assert.ok(Array.isArray(sug.picks));
   assert.ok(fs.existsSync(path.join(dir, 'db.json')) && fs.readdirSync(path.join(dir, 'backups')).length === 1, 'data and daily backup written');

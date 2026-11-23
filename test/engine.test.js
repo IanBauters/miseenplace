@@ -106,4 +106,20 @@ assert.strictEqual(E.convert(2, 'clove', { unit: 'g', subUnit: 'clove', subCount
 // "1 small can (160 g)": stock kept as 400 g tins → 0.4 tin.
 assert.strictEqual(E.convert(160, 'g', { unit: 'tin', pieceG: 400 }), 0.4);
 assert.strictEqual(E.convert(3, 'clove', { unit: 'pcs', subUnit: 'clove', subCount: 10 }), 0.3);
+// To taste: salt only has to be in the house; none at all → one pack on the list.
+const db3 = E.freshDb();
+db3.products.push({ id: 'salt', name: 'Salt', unit: 'g', packSize: 500, barcodes: [] }, { id: 'pas', name: 'Pasta', unit: 'g', packSize: 500, barcodes: [] });
+db3.recipes.push({ id: 'r', name: 'Pasta', servings: 3, ingredients: [{ id: 'a', productId: 'pas', qty: 300, unit: 'g' }, { id: 'b', productId: 'salt', qty: null, taste: true }] });
+assert.deepStrictEqual(E.needs(db3, db3.recipes[0], null), [{ productId: 'pas', qty: 300 }]);
+assert.deepStrictEqual(E.presence(db3.recipes[0]), ['salt']);
+db3.lots.push({ id: 'p', productId: 'pas', qty: 1000, locationId: 'pantry1' });
+db3.plan.push({ id: 'x', week: wk, recipeId: 'r', status: 'planned', order: 0 }, { id: 'y', week: wk, recipeId: 'r', status: 'planned', order: 1 });
+E.ensureWeek(db3, wk).confirmed = true;
+let d3 = E.compute(db3, today);
+assert.deepStrictEqual(d3.entries.x.missing, [{ productId: 'salt', qty: 0 }]);
+E.syncAuto(db3, today, d3);
+assert.deepStrictEqual(db3.shopping.map(x => [x.productId, x.qty]), [['salt', 500]], 'one pack of salt, not one per meal');
+db3.lots.push({ id: 's', productId: 'salt', qty: 3, locationId: 'pantry1' });
+d3 = E.compute(db3, today); E.syncAuto(db3, today, d3);
+assert.strictEqual(d3.entries.x.missing.length, 0); assert.strictEqual(db3.shopping.length, 0, 'a little salt left is enough');
 console.log('engine tests passed');

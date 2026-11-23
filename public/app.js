@@ -94,7 +94,8 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) load
 let tT;
 function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList.add('on'); clearTimeout(tT); tT = setTimeout(() => el.classList.remove('on'), 3500); }
 const dlg = $('#dlg');
-function openDlg(html, onSave, ok = t('Save'), extraBtn = '') {
+function openDlg(html, onSave, ok = t('Save'), extraBtn = '', cls = '') {
+  dlg.className = cls;
   dlg.innerHTML = `<form id="dlgF" novalidate>${html}<div class="row end">${extraBtn}<button type="button" class="ghost" data-close>${t('Cancel')}</button>${ok ? `<button class="btn" type="submit">${esc(ok)}</button>` : ''}</div></form>`;
   const f = $('#dlgF');
   f.addEventListener('submit', async e => { e.preventDefault(); const keep = await onSave(new FormData(f), f); if (keep !== false) closeDlg(); });
@@ -103,7 +104,7 @@ function openDlg(html, onSave, ok = t('Save'), extraBtn = '') {
   const first = f.querySelector('input:not([type=hidden]):not([type=checkbox]),select,textarea'); if (first && !('ontouchstart' in window)) first.focus();
   return f;
 }
-function closeDlg() { stopScan(); try { dlg.close(); } catch {} dlg.removeAttribute('open'); }
+function closeDlg() { stopScan(); try { dlg.close(); } catch {} dlg.removeAttribute('open'); dlg.className = ''; }
 dlg.addEventListener('close', stopScan);
 const opts = (arr, v, label = x => x) => arr.map(x => `<option value="${esc(x)}" ${x === v ? 'selected' : ''}>${esc(label(x))}</option>`).join('');
 const locOpts = v => ST.db.locations.map(l => `<option value="${l.id}" ${l.id === v ? 'selected' : ''}>${esc(locName(l))}${l.emergency ? ' ★' : ''}</option>`).join('');
@@ -177,7 +178,7 @@ function vMenu() {
   html += '</div>';
   if (overflow.length) html += `<div class="note bad">${t("{n} meal(s) don't fit in this week's home days. Set a day back to 'Cook at home', or they move to next week.", { n: overflow.length })}</div>${overflow.map(e => mealCard(e, w)).join('')}`;
   const mk = Object.keys(missing);
-  if (mk.length) html += `<div class="note ${w.confirmed ? 'warn' : ''}"><b>${t('Missing for this week')}:</b> ${mk.map(pid => esc(pName(pid)) + ' (' + fq(missing[pid], (P(pid) || {}).unit) + ')').join(', ')}<br>${w.confirmed ? t('These are on the shopping list.') : t('They go on the shopping list when you confirm the week.')}</div>`;
+  if (mk.length) html += `<div class="note ${w.confirmed ? 'warn' : ''}"><b>${t('Missing for this week')}:</b> ${mk.map(pid => esc(pName(pid)) + (missing[pid] > 0 ? ' (' + fqP(missing[pid], P(pid)) + ')' : '')).join(', ')}<br>${w.confirmed ? t('These are on the shopping list.') : t('They go on the shopping list when you confirm the week.')}</div>`;
   if (!isPast) {
     const free = homeDays - ents.length;
     html += `<div class="row">${free > 0 ? `<button class="btn alt" data-a="suggest">${t('Suggest {n} meals', { n: free })}</button>` : ''}
@@ -199,7 +200,7 @@ function mealCard(e, w) {
     ${warn.map(x => `<span class="badge b-soon">${esc(pName(x.productId))} ${x.type === 'past' ? t('past date') : t('due {d}', { d: rel(x.bb) })}</span>`).join('')}
     ${r.mode === 'ratio' ? `<button class="mini" data-a="base" data-id="${e.id}" ${e.status !== 'planned' ? 'disabled' : ''}>${esc(fq(e.base || r.baseQty, r.baseUnit) + ' ' + pName(r.baseProductId))}</button> ` : ''}<span class="meta small">${t('{n} servings', { n: nf(Math.round(mealServings(r, e) * 10) / 10) })}</span></div>
     ${e.status === 'planned' && ST.derived.week <= e.week ? `<div class="row tight"><button class="mini icon" data-a="mv" data-id="${e.id}" data-d="-1" aria-label="${t('Earlier')}">↑</button><button class="mini icon" data-a="mv" data-id="${e.id}" data-d="1" aria-label="${t('Later')}">↓</button>
-      <button class="mini" data-a="cook" data-id="${e.id}">✓ ${t('Cooked')}</button>${!w.confirmed ? `<button class="mini danger" data-a="rmmeal" data-id="${e.id}">${t('Remove')}</button>` : ''}</div>` : ''}</div>`;
+      <button class="mini" data-a="cookm" data-id="${e.id}">▶ ${t('Cook')}</button><button class="mini" data-a="cook" data-id="${e.id}">✓ ${t('Cooked')}</button>${!w.confirmed ? `<button class="mini danger" data-a="rmmeal" data-id="${e.id}">${t('Remove')}</button>` : ''}</div>` : ''}</div>`;
 }
 function picksHtml() {
   if (UI.picks === 'busy') return `<div class="note"><span class="spin"></span> ${t('Looking at what needs using first…')}</div>`;
@@ -221,7 +222,7 @@ function addMealDlg() {
 function cookDlg(id) {
   const e = ST.db.plan.find(x => x.id === id); const info = ST.derived.entries[id] || {};
   const r = R(e.recipeId) || { name: '?', ingredients: [] };
-  openDlg(`<h2>${esc(r.name)}</h2><b class="small">${t('Recipe for this meal')}</b>${linesHtml(recipeLines(r, e))}${r.steps ? `<details><summary>${t('Method')}</summary><p style="white-space:pre-wrap">${esc(r.steps)}</p></details>` : ''}
+  openDlg(`<h2>${esc(r.name)}</h2><b class="small">${t('Recipe for this meal')}</b>${linesHtml(recipeLines(r, e))}
   <p>${t('Mark as cooked? This takes these ingredients out of stock:')}</p>
   <ul>${(info.alloc || []).map(a => `<li>${esc(pName(a.productId))} — ${fqP(a.qty, P(a.productId))}</li>`).join('') || `<li class="meta">${t('nothing')}</li>`}</ul>
   ${(info.missing || []).length ? `<div class="note warn">${t('Not in stock (you used something else?)')}: ${info.missing.map(m => esc(pName(m.productId))).join(', ')}</div>` : ''}`,
@@ -415,46 +416,66 @@ function parseAmt(v) {
   }
   return n;
 }
+const amtText = n => n == null ? '' : String(Math.round(n * 1000) / 1000).replace('.', lang === 'nl' ? ',' : '.');
 const ingUnit = i => i.unit || (i.productId ? (P(i.productId) || {}).unit : 'pcs') || 'pcs';
 const ingName = i => i.name || pName(i.productId);
-// The recipe as you'd read it while cooking, scaled to a planned meal (or the usual amount).
+const sectionsOf = r => (r.sections && r.sections.length) ? r.sections : r.steps ? [{ title: '', steps: [{ text: r.steps, uses: [] }] }] : [];
+
+// The full ingredient list as you'd read it while cooking, scaled to a planned meal (or the usual amount).
 function recipeLines(r, e) {
   const out = [];
   if (r.mode === 'ratio') {
     const base = e && e.base > 0 ? e.base : r.baseQty;
     out.push({ name: r.baseName || pName(r.baseProductId), qty: base, unit: r.baseUnit, main: true, productId: r.baseProductId });
     for (const i of r.ingredients || []) {
-      let qty, unit;
-      if (i.per === 'part') {
-        qty = i.qty * base; unit = r.baseUnit;
-        if (i.unit && i.unit !== unit) { const c = Engine.convert(qty, unit, { unit: i.unit }); if (c != null) { qty = c; unit = i.unit; } }
-      } else if (i.per === 'per100') { qty = i.qty * base / 100; unit = ingUnit(i); }
-      else { qty = i.qty; unit = ingUnit(i); }
-      out.push({ name: ingName(i), qty, unit, productId: i.productId, note: i.per === 'fixed' ? i.note : '' });
+      let qty = null, unit = ingUnit(i);
+      if (!i.taste && i.qty > 0) {
+        if (i.per === 'part') {
+          qty = i.qty * base; unit = r.baseUnit;
+          if (i.unit && i.unit !== unit) { const c = Engine.convert(qty, unit, { unit: i.unit }); if (c != null) { qty = c; unit = i.unit; } }
+        } else if (i.per === 'per100') qty = i.qty * base / 100;
+        else qty = i.qty;
+      }
+      out.push({ id: i.id, name: ingName(i), qty, unit, productId: i.productId, note: i.per === 'fixed' || !i.per ? i.note : '' });
     }
   } else {
     const f = ((e && e.servings) || r.servings) / (r.servings || 1);
-    for (const i of r.ingredients || []) out.push({ name: ingName(i), qty: i.qty * f, unit: ingUnit(i), productId: i.productId, note: f === 1 ? i.note : '' });
+    for (const i of r.ingredients || []) out.push({ id: i.id, name: ingName(i), qty: !i.taste && i.qty > 0 ? i.qty * f : null, unit: ingUnit(i), productId: i.productId, note: f === 1 ? i.note : '' });
   }
   return out;
 }
+// One step's ingredients, as a share of the full list ("1 of the 2 tomatoes, large diced").
+function stepLines(r, step, e) {
+  const all = new Map(recipeLines(r, e).filter(l => l.id).map(l => [l.id, l]));
+  return (step.uses || []).map(u => {
+    const m = (r.ingredients || []).find(i => i.id === u.iid), ml = all.get(u.iid);
+    if (!m || !ml) return null;
+    if (ml.qty == null || u.taste) return { ...ml, qty: null, prep: u.prep, note: '' };
+    const whole = u.qty == null || !(m.qty > 0) || Math.abs(u.qty - m.qty) < 1e-9;
+    return { ...ml, qty: whole ? ml.qty : ml.qty * u.qty / m.qty, note: whole ? ml.note : '', prep: u.prep };
+  }).filter(Boolean);
+}
 function lineText(l) {
+  if (l.qty == null) return `${l.name} (${t('to taste')})${l.prep ? ', ' + l.prep : ''}`;
   const p = l.productId && P(l.productId);
   let extra = '';
   if (p && l.unit !== p.unit) {
     const c = Engine.convert(l.qty, l.unit, p);
     extra = c == null ? ' ⚠' : (['tbsp', 'tsp'].includes(l.unit) || Engine.COUNTED.includes(l.unit) || (Engine.COUNTED.includes(p.unit) && !Engine.SUB_UNITS.includes(l.unit))) ? ` (≈ ${fq(Math.round(c * 10) / 10, p.unit)})` : '';
   }
-  const amount = fq(Math.round(l.qty * 100) / 100, l.unit);
-  // "1 small can (160 g) tomato paste" when the recipe gives its own wording
-  return l.note ? `${l.note} (${amount}) ${l.name}${extra}` : `${amount} ${l.name}${extra}`;
+  const q = Math.round(l.qty * 100) / 100;
+  const amount = l.unit === 'pcs' ? nf(q) : fq(q, l.unit); // "2 tomatoes", not "2 pcs tomatoes"
+  // "1 small can (160 g) white beans" when the recipe gives its own wording
+  return (l.note ? `${l.note} (${amount}) ${l.name}` : `${amount} ${l.name}`) + extra + (l.prep ? ', ' + l.prep : '');
 }
 const linesHtml = ls => `<ul class="lines">${ls.map(l => `<li${l.main ? ' class="main"' : ''}>${esc(lineText(l))}</li>`).join('')}</ul>`;
 const mealServings = (r, e) => r.mode === 'ratio' && r.baseQty ? r.servings * ((e && e.base) || r.baseQty) / r.baseQty : (e && e.servings) || r.servings;
 
 function canMake(r) {
   const s = ST.derived.stock;
-  return Engine.needs(ST.db, r, null).map(i => ({ ...i, ok: ((s[i.productId] || {}).free || 0) >= i.qty }));
+  const counted = Engine.needs(ST.db, r, null).map(i => ({ ...i, ok: ((s[i.productId] || {}).free || 0) >= i.qty }));
+  const present = Engine.presence(r).map(pid => ({ productId: pid, ok: ST.db.lots.some(l => l.productId === pid && l.qty > 0) }));
+  return [...counted, ...present];
 }
 function vRecipes() {
   const q = UI.recipeQ.toLowerCase();
@@ -462,108 +483,258 @@ function vRecipes() {
     .sort((a, b) => (a.emergency - b.emergency) || a.name.localeCompare(b.name));
   const em = ST.derived.emergency.madeCount;
   $('#view').innerHTML = `<h2>${t('Recipes')}</h2><div class="row"><button class="btn" data-a="recipe">+ ${t('Recipe')}</button><input type="search" id="rq2" class="grow" style="width:auto" placeholder="${t('Search')}" value="${esc(UI.recipeQ)}"></div>
-  ${rs.length ? rs.map(r => { const ings = canMake(r); const all = ings.length && ings.every(i => i.ok);
-    return `<div class="card" data-a="recipe" data-id="${r.id}" style="cursor:pointer"><div class="row tight" style="justify-content:space-between;flex-wrap:nowrap"><h3>${r.fav ? '★ ' : ''}${esc(r.name)}</h3>${all ? `<span class="badge b-ok">${t('can make now')}</span>` : ''}</div>
-    <div>${r.mode === 'ratio' ? `<span class="badge b-soon">${esc(t('Based on {x}', { x: pName(r.baseProductId) }))}</span>` : ''}${r.emergency ? `<span class="badge b-sky">${t('Emergency')} · ${t('{n}× from the reserve', { n: em[r.id] || 0 })}</span>` : ''}${r.stove ? `<span class="badge b-soft">${t('needs a stove')}</span>` : ''}${(r.tags || []).map(x => `<span class="badge b-soft">${esc(x)}</span>`).join('')}<span class="meta small">${t('{n} servings', { n: nf(r.servings) })}</span></div>
+  ${rs.length ? rs.map(r => { const ings = canMake(r); const all = ings.length && ings.every(i => i.ok); const steps = sectionsOf(r).reduce((n, s) => n + s.steps.length, 0);
+    return `<div class="card" data-a="recipe" data-id="${r.id}" style="cursor:pointer"><div class="row tight" style="justify-content:space-between;flex-wrap:nowrap"><h3>${r.fav ? '★ ' : ''}${esc(r.name)}</h3>${all ? `<span class="badge b-ok">${t('can make now')}</span>` : ''}<button class="mini" data-a="cookr" data-id="${r.id}" aria-label="${t('Cook')}">▶ ${t('Cook')}</button></div>
+    <div>${r.mode === 'ratio' ? `<span class="badge b-soon">${esc(t('Based on {x}', { x: pName(r.baseProductId) }))}</span>` : ''}${r.emergency ? `<span class="badge b-sky">${t('Emergency')} · ${t('{n}× from the reserve', { n: em[r.id] || 0 })}</span>` : ''}${r.stove ? `<span class="badge b-soft">${t('needs a stove')}</span>` : ''}${(r.tags || []).map(x => `<span class="badge b-soft">${esc(x)}</span>`).join('')}<span class="meta small">${t('{n} servings', { n: nf(r.servings) })}${steps ? ' · ' + t('{n} steps', { n: steps }) : ''}</span></div>
     <div class="small" style="margin-top:4px">${ings.map(i => `<span class="badge ${i.ok ? 'b-ok' : 'b-no'}">${esc(pName(i.productId))}</span>`).join('')}</div></div>`; }).join('')
     : `<div class="empty">${t('No recipes yet. Add the meals you cook, with their ingredients, so the app can plan and suggest.')}</div>`}`;
   $('#rq2').oninput = e => { UI.recipeQ = e.target.value; const pos = e.target.selectionStart; vRecipes(); const n = $('#rq2'); n.focus(); n.setSelectionRange(pos, pos); };
 }
-function ingRow(i = {}, baseUnit = 'g') {
-  const stock = i.productId !== null;
-  return `<div class="ingrow">
-  <input name="iname" list="plist" autocomplete="off" placeholder="${t('Ingredient')}" value="${esc(i.productId ? pName(i.productId) : i.name || '')}" aria-label="${t('Ingredient')}">
-  <button type="button" class="mini icon" data-x="del" aria-label="${t('Remove')}">×</button>
-  <input name="iqty" inputmode="decimal" autocomplete="off" placeholder="1 1/2" value="${esc(i.qty ?? '')}" aria-label="${t('Amount')}">
-  <select name="iunit" aria-label="${t('Unit')}">${opts(RUNITS, i.unit || (i.productId ? (P(i.productId) || {}).unit : 'g'), u => uLabel(u, 2))}</select>
-  <input name="inote" autocomplete="off" placeholder="${t('as written, e.g. 1 small can')}" value="${esc(i.note || '')}" aria-label="${t('As written in the recipe')}">
-  <select name="iper" class="ratio-only" aria-label="${t('How')}">${opts(['fixed', 'part', 'per100'], i.per || 'part', x => x === 'per100' ? t('per 100 {u} main ingredient', { u: uLabel(baseUnit) }) : x === 'part' ? t('parts') : t('fixed amount'))}</select>
-  <label class="check small istock"><input type="checkbox" name="istock" ${stock ? 'checked' : ''}> ${t('from stock')}</label></div>`;
+
+/* ---------- recipe builder: all ingredients first, then sections and steps that pick from them ---------- */
+let B = null; // the recipe being edited
+const newIid = () => 'i' + Math.random().toString(36).slice(2, 8);
+function draftFrom(r) {
+  return {
+    id: r.id || null, name: r.name || '', servings: r.servings || ST.db.settings.people, mode: r.mode || 'fixed',
+    baseName: r.baseProductId ? pName(r.baseProductId) : '', baseQty: r.baseQty || 600, baseUnit: r.baseUnit || 'g',
+    tags: (r.tags || []).join(', '), fav: !!r.fav, emergency: !!r.emergency, stove: !!r.stove,
+    ingredients: (r.ingredients || []).map(i => ({ id: i.id || newIid(), name: ingName(i), qtyText: i.taste ? '' : amtText(i.qty), unit: i.unit || ingUnit(i), note: i.note || '', stock: !!i.productId, per: i.per || 'fixed' })),
+    sections: sectionsOf(r).map(s => ({ title: s.title || '', steps: s.steps.map(st => ({ text: st.text || '', uses: (st.uses || []).map(u => ({ iid: u.iid, qtyText: amtText(u.qty), prep: u.prep || '', taste: !!u.taste })) })) }))
+  };
+}
+function leftOf(m) {
+  const uses = B.sections.flatMap(s => s.steps.flatMap(st => st.uses.filter(u => u.iid === m.id)));
+  const total = parseAmt(m.qtyText);
+  if (!uses.length) return { cls: 'b-soft', text: t('not in a step') };
+  if (!(total > 0)) return { cls: 'b-ok', text: '✓ ' + t('in a step') };
+  const used = uses.filter(u => !u.taste).reduce((a, u) => a + (parseAmt(u.qtyText) > 0 ? parseAmt(u.qtyText) : total), 0);
+  const left = Math.round((total - used) * 1000) / 1000;
+  if (Math.abs(left) < 1e-9) return { cls: 'b-ok', text: '✓ ' + t('all used') };
+  return left > 0 ? { cls: 'b-soon', text: t('{n} left', { n: fq(left, m.unit) }) } : { cls: 'b-no', text: t('{n} too much', { n: fq(-left, m.unit) }) };
+}
+function builderHtml() {
+  const ratio = B.mode === 'ratio';
+  const ingHtml = (m, k) => {
+    const isNew = m.stock && m.name.trim() && !byName(m.name);
+    return `<div class="ing" data-i="${k}">
+      <input data-f="name" list="plist" autocomplete="off" placeholder="${t('Ingredient')}" value="${esc(m.name)}" aria-label="${t('Ingredient')}">
+      <button type="button" class="mini icon" data-b="delIng" aria-label="${t('Remove')}">×</button>
+      <input data-f="qtyText" inputmode="decimal" autocomplete="off" placeholder="${t('to taste')}" value="${esc(m.qtyText)}" aria-label="${t('Amount')}">
+      <select data-f="unit" aria-label="${t('Unit')}">${opts(RUNITS, m.unit || 'pcs', u => uLabel(u, 2))}</select>
+      ${ratio ? `<select data-f="per" aria-label="${t('How')}">${opts(['fixed', 'part', 'per100'], m.per, x => x === 'per100' ? t('per 100 {u} main ingredient', { u: uLabel(B.baseUnit) }) : x === 'part' ? t('parts') : t('fixed amount'))}</select>` : ''}
+      <input data-f="note" autocomplete="off" placeholder="${t('as written, e.g. 1 small can')}" value="${esc(m.note)}" aria-label="${t('As written in the recipe')}">
+      <div class="ingfoot"><label class="check small"><input type="checkbox" data-f="stock" ${m.stock ? 'checked' : ''}> ${t('from stock')}</label>${isNew ? `<span class="badge b-sky">${t('new product')}</span>` : ''}<span class="badge left ${leftOf(m).cls}" data-left="${m.id}">${esc(leftOf(m).text)}</span></div></div>`;
+  };
+  const useHtml = (u, si, ti, ui) => {
+    const m = B.ingredients.find(x => x.id === u.iid) || { name: '?', unit: 'pcs', qtyText: '' };
+    const taste = !(parseAmt(m.qtyText) > 0);
+    return `<div class="use" data-u="${si}.${ti}.${ui}"><b>${esc(m.name)}</b>
+      ${taste ? `<span class="meta small">${t('to taste')}</span>` : `${u.taste ? '' : `<input data-uf="qtyText" inputmode="decimal" autocomplete="off" placeholder="${esc(t('all ({x})', { x: fq(parseAmt(m.qtyText), m.unit) }))}" value="${esc(u.qtyText)}" aria-label="${t('Amount')}"><span class="meta small">${esc(uLabel(m.unit, 2))}</span>`}
+        <label class="check small"><input type="checkbox" data-uf="taste" ${u.taste ? 'checked' : ''}> ${t('to taste')}</label>`}
+      <input data-uf="prep" autocomplete="off" placeholder="${t('e.g. large diced')}" value="${esc(u.prep)}" aria-label="${t('Preparation')}">
+      <button type="button" class="mini icon" data-b="delUse" aria-label="${t('Remove')}">×</button></div>`;
+  };
+  const addUse = (si, ti) => `<select class="adduse" data-b="addUse" data-st="${si}.${ti}" aria-label="${t('Add an ingredient to this step')}"><option value="">+ ${t('ingredient from the list')}…</option>${B.ingredients.filter(m => m.name.trim()).map(m => `<option value="${m.id}">${esc(m.name)} · ${esc(leftOf(m).text)}</option>`).join('')}</select>`;
+  let n = 0;
+  return `<div class="bhead"><input data-r="name" class="bname" placeholder="${t('Recipe name')}" value="${esc(B.name)}" aria-label="${t('Name')}">
+    <details class="paste"><summary>${t('Paste a recipe')}</summary><p class="meta small">${t('Paste the full text: title, all ingredients, then each section with its ingredients and steps. You can check everything before saving.')}</p>
+    <textarea id="pasteT" rows="8" placeholder="${t('Soup au pistou…')}"></textarea><div class="row end"><button type="button" class="btn alt" data-b="parse">${t('Fill in')}</button></div></details>
+    <div class="grid2 fields"><label>${ratio ? t('Servings for the usual amount') : t('Servings')}<input data-r="servings" type="number" min="1" inputmode="numeric" value="${esc(B.servings)}"></label>
+    <label class="check" style="align-self:end"><input type="checkbox" data-r="ratio" ${ratio ? 'checked' : ''}> ${t('Amounts depend on one main ingredient')}</label></div>
+    ${ratio ? `<div class="grid3 fields"><label>${t('Main ingredient')}<input data-r="baseName" list="plist" autocomplete="off" value="${esc(B.baseName)}"></label><label>${t('Usual amount')}<input data-r="baseQty" inputmode="decimal" value="${esc(amtText(B.baseQty))}"></label><label>${t('Unit')}<select data-r="baseUnit">${opts(['g', 'kg', 'pcs', 'ml', 'l'], B.baseUnit, uLabel)}</select></label></div>` : ''}</div>
+  <h3 class="bsec">${t('All ingredients')}</h3><p class="meta small">${t('Leave the amount empty for “to taste”. Amounts like 1 1/2 or 1,5 work.')}</p>
+  <div class="ings">${B.ingredients.map(ingHtml).join('')}</div><button type="button" class="mini" data-b="addIng">+ ${t('Ingredient')}</button>
+  <h3 class="bsec">${t('Steps')}</h3>
+  ${B.sections.map((s, si) => `<section class="sec" data-s="${si}"><div class="row tight"><input data-sf="title" class="grow" style="width:auto" placeholder="${t('Section, e.g. For the soup')}" value="${esc(s.title)}"><button type="button" class="mini icon" data-b="delSec" aria-label="${t('Remove')}">×</button></div>
+    ${s.steps.map((st, ti) => `<div class="step" data-st="${si}.${ti}"><div class="row tight"><b class="grow">${t('Step {n}', { n: ++n })}</b><button type="button" class="mini icon" data-b="stepUp" aria-label="${t('Earlier')}">↑</button><button type="button" class="mini icon" data-b="stepDown" aria-label="${t('Later')}">↓</button><button type="button" class="mini icon" data-b="delStep" aria-label="${t('Remove')}">×</button></div>
+      ${st.uses.map((u, ui) => useHtml(u, si, ti, ui)).join('')}${addUse(si, ti)}
+      <textarea data-tf="text" rows="3" placeholder="${t('What to do, e.g. Simmer for 50 minutes')}">${esc(st.text)}</textarea></div>`).join('')}
+    <button type="button" class="mini" data-b="addStep" data-s="${si}">+ ${t('Step')}</button></section>`).join('')}
+  <button type="button" class="mini" data-b="addSec">+ ${t('Section')}</button>
+  <details class="more"><summary>${t('More')}</summary>
+    <label>${t('Tags')}<input data-r="tags" value="${esc(B.tags)}" placeholder="${t('e.g. quick, vegetarian')}"></label>
+    <label class="check"><input type="checkbox" data-r="fav" ${B.fav ? 'checked' : ''}> ${t('Favourite')}</label>
+    <label class="check"><input type="checkbox" data-r="emergency" ${B.emergency ? 'checked' : ''}> ${t('Emergency meal (made from the reserve)')}</label>
+    <label class="check"><input type="checkbox" data-r="stove" ${B.stove ? 'checked' : ''}> ${t('Needs cooking (camping stove in an emergency)')}</label></details>`;
 }
 function recipeDlg(id, preset = {}) {
-  const r = id ? R(id) : { servings: ST.db.settings.people, ingredients: [], ...preset };
-  const ratio = r.mode === 'ratio';
-  const f = openDlg(`<h2>${id ? t('Edit recipe') : t('New recipe')}</h2>${productList()}
-    <label>${t('Name')}<input name="name" required value="${esc(r.name || '')}"></label>
-    <label class="check"><input type="checkbox" name="ratio" ${ratio ? 'checked' : ''}> ${t('Amounts depend on one main ingredient')}</label>
-    <div class="grid3 ratio-only"><label>${t('Main ingredient')}<input name="bname" list="plist" autocomplete="off" value="${esc(ratio ? pName(r.baseProductId) : '')}"></label>
-      <label>${t('Usual amount')}<input name="bqty" inputmode="decimal" value="${esc(r.baseQty ?? 600)}"></label>
-      <label>${t('Unit')}<select name="bunit">${opts(['g', 'kg', 'pcs', 'ml', 'l'], r.baseUnit || 'g', uLabel)}</select></label></div>
-    <label><span class="ratio-only">${t('Servings for the usual amount')}</span><span class="fixed-only">${t('Servings')}</span><input name="servings" type="number" min="1" inputmode="numeric" value="${esc(r.servings)}"></label>
-    <div><b class="small">${t('Ingredients')}</b> <span class="meta small">${t('Amounts like 1 1/2 or 1,5 work')}</span>
-    <div id="ings" style="display:grid;gap:8px;margin-top:6px">${(r.ingredients.length ? r.ingredients : [{}]).map(i => ingRow(i, r.baseUnit)).join('')}</div>
-    <button type="button" class="mini" data-x="add" style="margin-top:8px">+ ${t('Ingredient')}</button></div>
-    <div id="preview" class="note small"></div>
-    <label>${t('Tags')}<input name="tags" value="${esc((r.tags || []).join(', '))}" placeholder="${t('e.g. quick, vegetarian')}"></label>
-    <label>${t('Method')}<textarea name="steps" rows="4">${esc(r.steps || '')}</textarea></label>
-    <label class="check"><input type="checkbox" name="fav" ${r.fav ? 'checked' : ''}> ${t('Favourite')}</label>
-    <label class="check"><input type="checkbox" name="emergency" ${r.emergency ? 'checked' : ''}> ${t('Emergency meal (made from the reserve)')}</label>
-    <label class="check"><input type="checkbox" name="stove" ${r.stove ? 'checked' : ''}> ${t('Needs cooking (camping stove in an emergency)')}</label>`, async (fd, form) => {
-    const isRatio = form.elements.ratio.checked, bunit = fd.get('bunit');
-    const ensure = async (name, unit) => byName(name) || ((await act('product.add', Engine.SUB_UNITS.includes(unit)
-      ? { name, unit: 'pcs', subUnit: unit, subCount: SUB_DEFAULT[unit] } // "3 cloves" → a garlic bulb of ~10 cloves
-      : { name, unit })) || {}).product;
-    let baseP = null, baseQty = null;
-    if (isRatio) {
-      const bn = fd.get('bname').trim(); baseQty = parseAmt(fd.get('bqty'));
-      if (!bn) { toast(t('Choose the main ingredient')); return false; }
-      if (!(baseQty > 0)) { toast(t('Check the amount for {x}', { x: bn })); return false; }
-      baseP = await ensure(bn, bunit); if (!baseP) return false;
-    }
-    const ingredients = [];
-    for (const row of form.querySelectorAll('.ingrow')) {
-      const name = row.querySelector('[name=iname]').value.trim(); if (!name) continue;
-      const qty = parseAmt(row.querySelector('[name=iqty]').value);
-      if (!(qty > 0)) { toast(t('Check the amount for {x}', { x: name })); return false; }
-      const unit = row.querySelector('[name=iunit]').value, per = isRatio ? row.querySelector('[name=iper]').value : 'fixed';
-      if (row.querySelector('[name=istock]').checked) {
-        const p = await ensure(name, per === 'part' ? bunit : UNITS.includes(unit) || Engine.SUB_UNITS.includes(unit) ? unit : 'g'); if (!p) return false;
-        // never drop an amount silently: it must convert to how the product is stocked
-        if (Engine.convert(1, per === 'part' ? bunit : unit, p) == null) { toast(t("{x} can't be converted: set its weight per piece (More → Products)", { x: name })); return false; }
-        ingredients.push({ productId: p.id, qty, unit, per, note: row.querySelector('[name=inote]').value.trim() });
-      } else ingredients.push({ productId: null, name, qty, unit, per, note: row.querySelector('[name=inote]').value.trim() });
-    }
-    const data = { name: fd.get('name'), servings: fd.get('servings'), ingredients, tags: fd.get('tags').split(',').map(x => x.trim()).filter(Boolean),
-      steps: fd.get('steps'), fav: !!fd.get('fav'), emergency: !!fd.get('emergency'), stove: !!fd.get('stove'),
-      mode: isRatio ? 'ratio' : 'fixed', baseProductId: baseP && baseP.id, baseUnit: bunit, baseQty };
-    if (!data.name.trim()) { toast(t('Name required')); return false; }
-    return !!(await act(id ? 'recipe.update' : 'recipe.add', id ? { id, ...data } : data)) || false;
-  }, t('Save'), id ? `<button type="button" class="ghost" data-x="delr" style="margin-right:auto;color:var(--red)">${t('Delete')}</button>` : '');
-
-  // live preview: the recipe as it will read for the usual amount
-  const preview = () => {
-    const isRatio = f.elements.ratio.checked; f.classList.toggle('ratio', isRatio);
-    const bunit = f.elements.bunit.value;
-    f.querySelectorAll('[name=iper] option[value=per100]').forEach(o => { o.textContent = t('per 100 {u} main ingredient', { u: uLabel(bunit) }); });
-    const temp = { mode: isRatio ? 'ratio' : 'fixed', baseName: f.elements.bname.value.trim() || t('Main ingredient'), baseUnit: bunit, baseQty: parseAmt(f.elements.bqty.value) || 0,
-      baseProductId: (byName(f.elements.bname.value) || {}).id, servings: Number(f.elements.servings.value) || 1,
-      ingredients: [...f.querySelectorAll('.ingrow')].map(row => { const name = row.querySelector('[name=iname]').value.trim(); const p = row.querySelector('[name=istock]').checked && byName(name);
-        return { name, productId: p ? p.id : null, qty: parseAmt(row.querySelector('[name=iqty]').value), unit: row.querySelector('[name=iunit]').value, per: isRatio ? row.querySelector('[name=iper]').value : 'fixed', note: row.querySelector('[name=inote]').value.trim() }; })
-        .filter(i => i.name && i.qty > 0) };
-    const ls = recipeLines(temp, null);
-    const bad = ls.filter(l => { const p = l.productId && P(l.productId); return p && Engine.convert(l.qty, l.unit, p) == null; });
-    $('#preview').hidden = !ls.length;
-    $('#preview').innerHTML = (isRatio ? `<b>${esc(t('For {x}:', { x: lineText(ls[0]) }))}</b>` : '') + linesHtml(isRatio ? ls.slice(1) : ls) +
-      bad.map(l => `<div class="bad">${esc(t("{x} can't be converted: set its weight per piece (More → Products)", { x: l.name }))}</div>`).join('');
+  B = draftFrom(id ? R(id) : { ...preset });
+  if (!B.ingredients.length) B.ingredients.push({ id: newIid(), name: '', qtyText: '', unit: 'pcs', note: '', stock: true, per: 'fixed' });
+  if (!B.sections.length) B.sections.push({ title: '', steps: [{ text: '', uses: [] }] });
+  const f = openDlg(`${productList()}<div id="bld"></div>`, saveRecipe, t('Save'),
+    id ? `<button type="button" class="ghost" data-b="delRecipe" style="margin-right:auto;color:var(--red)">${t('Delete')}</button>` : '', 'full builder');
+  const draw = () => { const y = dlg.scrollTop; $('#bld').innerHTML = builderHtml(); dlg.scrollTop = y; };
+  const refreshLeft = () => {
+    for (const m of B.ingredients) { const el = f.querySelector(`[data-left="${m.id}"]`); if (el) { const l = leftOf(m); el.className = 'badge left ' + l.cls; el.textContent = l.text; } }
   };
-  f.addEventListener('click', async e => {
-    const x = e.target.dataset.x;
-    if (x === 'add') { f.querySelector('#ings').insertAdjacentHTML('beforeend', ingRow({}, f.elements.bunit.value)); preview(); }
-    if (x === 'del') { e.target.closest('.ingrow').remove(); preview(); }
-    if (x === 'delr' && e.target.dataset.sure) { if (await act('recipe.delete', { id })) closeDlg(); }
-    else if (x === 'delr') { e.target.dataset.sure = 1; e.target.textContent = t('Tap again to delete'); }
-  });
   f.addEventListener('input', e => {
-    if (e.target.name === 'iname') {
-      const p = byName(e.target.value); const row = e.target.closest('.ingrow');
-      if (p) { row.querySelector('[name=istock]').checked = true; if (!f.elements.ratio.checked || row.querySelector('[name=iper]').value !== 'part') row.querySelector('[name=iunit]').value = p.unit; }
-    }
-    if (e.target.name === 'bname') { const p = byName(e.target.value); if (p && ['g', 'kg', 'pcs', 'ml', 'l'].includes(p.unit)) f.elements.bunit.value = p.unit; }
-    preview();
+    const el = e.target, d = el.dataset;
+    if (d.r) { B[d.r] = el.type === 'checkbox' ? el.checked : el.value; if (d.r === 'ratio') { B.mode = el.checked ? 'ratio' : 'fixed'; draw(); } if (d.r === 'baseQty') B.baseQty = parseAmt(el.value); return; }
+    if (d.f) { const m = B.ingredients[+el.closest('[data-i]').dataset.i]; m[d.f] = el.type === 'checkbox' ? el.checked : el.value;
+      if (d.f === 'name') { const p = m.stock && byName(el.value); if (p) { m.unit = p.unit; el.closest('.ing').querySelector('[data-f=unit]').value = p.unit; } }
+      refreshLeft(); return; }
+    if (d.sf) { B.sections[+el.closest('[data-s]').dataset.s].title = el.value; return; }
+    if (d.tf) { const [si, ti] = el.closest('[data-st]').dataset.st.split('.').map(Number); B.sections[si].steps[ti].text = el.value; return; }
+    if (d.uf) { const [si, ti, ui] = el.closest('[data-u]').dataset.u.split('.').map(Number); const u = B.sections[si].steps[ti].uses[ui];
+      if (d.uf === 'taste') { u.taste = el.checked; draw(); return; }
+      u[d.uf] = el.value; refreshLeft(); }
   });
-  f.addEventListener('change', preview);
-  preview();
+  f.addEventListener('change', e => {
+    const el = e.target;
+    if (el.dataset.b === 'addUse' && el.value) {
+      const [si, ti] = el.dataset.st.split('.').map(Number), m = B.ingredients.find(x => x.id === el.value);
+      const total = parseAmt(m.qtyText), l = leftOf(m);
+      const used = B.sections.flatMap(s => s.steps.flatMap(st => st.uses.filter(u => u.iid === m.id && !u.taste))).reduce((a, u) => a + (parseAmt(u.qtyText) > 0 ? parseAmt(u.qtyText) : total), 0);
+      const rest = total > 0 && l.cls === 'b-soon' ? total - used : null; // only what's left, or the whole amount
+      B.sections[si].steps[ti].uses.push({ iid: m.id, qtyText: rest != null && rest < total ? amtText(rest) : '', prep: '' });
+      draw();
+    }
+    if (['unit', 'per', 'stock'].includes(el.dataset.f) || el.dataset.r === 'baseUnit') draw();
+  });
+  f.addEventListener('click', async e => {
+    const b = e.target.closest('[data-b]'); if (!b || b.tagName === 'SELECT') return;
+    const k = b.dataset.b, i = b.closest('[data-i]'), sec = b.closest('[data-s]'), st = b.closest('[data-st]');
+    const [si, ti] = st ? st.dataset.st.split('.').map(Number) : [sec ? +sec.dataset.s : 0, 0];
+    if (k === 'addIng') B.ingredients.push({ id: newIid(), name: '', qtyText: '', unit: 'pcs', note: '', stock: true, per: B.mode === 'ratio' ? 'part' : 'fixed' });
+    if (k === 'delIng') { const id = B.ingredients[+i.dataset.i].id; B.ingredients.splice(+i.dataset.i, 1); B.sections.forEach(s => s.steps.forEach(x => { x.uses = x.uses.filter(u => u.iid !== id); })); }
+    if (k === 'delUse') { const [a, c, u] = b.closest('[data-u]').dataset.u.split('.').map(Number); B.sections[a].steps[c].uses.splice(u, 1); }
+    if (k === 'addStep') B.sections[+b.dataset.s].steps.push({ text: '', uses: [] });
+    if (k === 'delStep') { B.sections[si].steps.splice(ti, 1); }
+    if (k === 'stepUp' || k === 'stepDown') { const arr = B.sections[si].steps, j = ti + (k === 'stepUp' ? -1 : 1); if (j >= 0 && j < arr.length) [arr[ti], arr[j]] = [arr[j], arr[ti]]; }
+    if (k === 'addSec') B.sections.push({ title: '', steps: [{ text: '', uses: [] }] });
+    if (k === 'delSec') B.sections.splice(+sec.dataset.s, 1);
+    if (k === 'parse') {
+      const r = RecipeText.parseRecipe($('#pasteT').value);
+      if (!r.ingredients.length && !r.sections.length) { toast(t('Nothing recognised in that text')); return; }
+      B.name = B.name || r.name;
+      B.ingredients = r.ingredients.map(m => { const p = m.stock && byName(m.name); return { id: m.id, name: m.name, qtyText: amtText(m.qty), unit: m.unit || (p ? p.unit : 'pcs'), note: m.note, stock: m.stock, per: 'fixed' }; });
+      B.sections = r.sections.map(s => ({ title: s.title, steps: s.steps.map(x => ({ text: x.text, uses: x.uses.map(u => ({ iid: u.iid, qtyText: amtText(u.qty), prep: u.prep, taste: u.taste })) })) }));
+      if (!B.sections.length) B.sections.push({ title: '', steps: [{ text: r.intro, uses: [] }] });
+      toast(t('Filled in — check the ingredients and steps, then save'));
+    }
+    if (k === 'delRecipe') { if (b.dataset.sure) { if (await act('recipe.delete', { id: B.id })) closeDlg(); } else { b.dataset.sure = 1; b.textContent = t('Tap again to delete'); } return; }
+    draw();
+  });
+  draw();
 }
+async function saveRecipe() {
+  const name = B.name.trim(); if (!name) { toast(t('Name required')); return false; }
+  const ratio = B.mode === 'ratio';
+  const ensure = async (n, unit) => byName(n) || ((await act('product.add', Engine.SUB_UNITS.includes(unit)
+    ? { name: n, unit: 'pcs', subUnit: unit, subCount: SUB_DEFAULT[unit] } // "3 cloves" → a garlic bulb of ~10 cloves
+    : { name: n, unit: UNITS.includes(unit) ? unit : 'g' })) || {}).product;
+  let baseP = null;
+  if (ratio) {
+    if (!B.baseName.trim()) { toast(t('Choose the main ingredient')); return false; }
+    if (!(B.baseQty > 0)) { toast(t('Check the amount for {x}', { x: B.baseName })); return false; }
+    baseP = await ensure(B.baseName.trim(), B.baseUnit); if (!baseP) return false;
+  }
+  const ingredients = [];
+  for (const m of B.ingredients) {
+    const n = m.name.trim(); if (!n) continue;
+    const qty = parseAmt(m.qtyText), taste = !m.qtyText.trim();
+    if (!taste && !(qty > 0)) { toast(t('Check the amount for {x}', { x: n })); return false; }
+    const per = ratio ? m.per : 'fixed';
+    let productId = null;
+    if (m.stock) {
+      const p = await ensure(n, per === 'part' ? B.baseUnit : m.unit); if (!p) return false;
+      // never drop an amount silently: it must convert to how the product is stocked
+      if (!taste && Engine.convert(1, per === 'part' ? B.baseUnit : m.unit, p) == null) { toast(t("{x} can't be converted: set its weight per piece (More → Products)", { x: n })); return false; }
+      productId = p.id;
+    }
+    ingredients.push({ id: m.id, productId, name: n, qty: taste ? null : qty, taste, unit: m.unit, note: m.note.trim(), per });
+  }
+  const ids = new Set(ingredients.map(i => i.id));
+  const sections = B.sections.map(s => ({ title: s.title.trim(), steps: s.steps.map(st => ({ text: st.text.trim(),
+    uses: st.uses.filter(u => ids.has(u.iid)).map(u => { const m = ingredients.find(i => i.id === u.iid); const q = parseAmt(u.qtyText); return { iid: u.iid, qty: !u.taste && q > 0 ? q : null, unit: m.unit, prep: u.prep.trim(), taste: !!u.taste && !m.taste }; }) })) }));
+  const data = { name, servings: B.servings, ingredients, sections, tags: B.tags.split(',').map(x => x.trim()).filter(Boolean),
+    fav: !!B.fav, emergency: !!B.emergency, stove: !!B.stove, mode: ratio ? 'ratio' : 'fixed', baseProductId: baseP && baseP.id, baseUnit: B.baseUnit, baseQty: B.baseQty };
+  return !!(await act(B.id ? 'recipe.update' : 'recipe.add', B.id ? { id: B.id, ...data } : data)) || false;
+}
+
+/* ---------- cook mode: one step at a time ---------- */
+let C = null, wake = null, tick = null;
+const DURATION = /(\d+(?:[.,]\d+)?)\s*(minutes?|minuten|minuut|min\.?|hours?|uur|uren)\b/gi;
+function cookPages(r) {
+  const pages = [{ kind: 'mise' }];
+  for (const s of sectionsOf(r)) s.steps.forEach((st, i) => pages.push({ kind: 'step', section: s.title, step: st, first: i === 0 }));
+  pages.push({ kind: 'done' });
+  return pages;
+}
+async function keepAwake() { try { if (navigator.wakeLock && C) wake = await navigator.wakeLock.request('screen'); } catch {} }
+function beep() {
+  try { navigator.vibrate && navigator.vibrate([400, 150, 400, 150, 400]); } catch {}
+  try {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.35, 0.7].forEach(s => { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.value = 880; g.gain.value = 0.25; o.connect(g); g.connect(ac.destination); o.start(ac.currentTime + s); o.stop(ac.currentTime + s + 0.22); });
+    setTimeout(() => ac.close(), 1500);
+  } catch {}
+}
+function openCook(recipeId, entryId) {
+  const r = R(recipeId); if (!r) return;
+  const e = entryId ? ST.db.plan.find(x => x.id === entryId) : null;
+  C = { r, e, scale: e ? { ...e } : { servings: r.servings, base: r.baseQty }, page: 0, pages: cookPages(r), ticked: new Set(), timers: [] };
+  dlg.className = 'full cookmode';
+  dlg.innerHTML = `<div class="cook"><header><b class="grow">${esc(r.name)}</b><span id="cookN" class="meta"></span><button type="button" class="mini icon" data-c="close" aria-label="${t('Close')}">×</button></header>
+    <div id="cookBody" class="cookbody"></div><div id="cookTimers" class="timers"></div>
+    <footer><button type="button" class="ghost" data-c="prev">‹ ${t('Back')}</button><button type="button" class="btn" data-c="next"></button></footer></div>`;
+  try { dlg.showModal(); } catch { dlg.setAttribute('open', ''); }
+  keepAwake(); drawCook();
+  clearInterval(tick); tick = setInterval(drawTimers, 1000);
+}
+function drawCook() {
+  const { r, page, pages } = C, pg = pages[page], e = C.scale;
+  $('#cookN').textContent = page && page < pages.length - 1 ? t('Step {n} of {m}', { n: page, m: pages.length - 2 }) : '';
+  let h = '';
+  if (pg.kind === 'mise') {
+    const lines = recipeLines(r, e);
+    h = `<h2>${t('Mise en place')}</h2><p class="meta">${t('Put everything ready. Tick what you have out.')}</p>
+      ${C.e ? `<p class="meta">${t('{n} servings', { n: nf(Math.round(mealServings(r, e) * 10) / 10) })}</p>` : r.mode === 'ratio'
+        ? `<label class="row tight">${esc(pName(r.baseProductId))} (${uLabel(r.baseUnit)})<input id="cookBase" inputmode="decimal" style="width:110px" value="${esc(amtText(e.base))}"></label>`
+        : `<div class="row tight"><button type="button" class="mini icon" data-c="less">−</button><b>${t('{n} servings', { n: nf(e.servings) })}</b><button type="button" class="mini icon" data-c="more">+</button></div>`}
+      <div class="miselist">${lines.map((l, i) => `<label class="check big"><input type="checkbox" data-c="tick" data-k="${i}" ${C.ticked.has(i) ? 'checked' : ''}> <span>${esc(lineText(l))}</span></label>`).join('')}</div>`;
+  } else if (pg.kind === 'step') {
+    const ls = stepLines(r, pg.step, e);
+    const durs = [...(pg.step.text || '').matchAll(DURATION)].map(m => ({ label: m[0], sec: Math.round(parseFloat(m[1].replace(',', '.')) * (/^(h|u)/i.test(m[2]) ? 3600 : 60)) }));
+    h = `${pg.section ? `<p class="sectitle">${esc(pg.section)}</p>` : ''}
+      ${ls.length ? `<ul class="steplist">${ls.map(l => `<li>${esc(lineText(l))}</li>`).join('')}</ul>` : ''}
+      <p class="steptext">${esc(pg.step.text || '').replace(/\n/g, '<br>')}</p>
+      ${durs.map(d => `<button type="button" class="btn alt" data-c="timer" data-s="${d.sec}" data-l="${esc(d.label)}">⏱ ${esc(d.label)}</button>`).join(' ')}`;
+  } else {
+    const planned = C.e && C.e.status === 'planned' && ST.db.plan.some(x => x.id === C.e.id && x.status === 'planned');
+    h = `<h2>${t('Enjoy your meal!')}</h2>${planned ? `<p>${t('Mark as cooked? This takes these ingredients out of stock:')}</p>
+      <ul>${((ST.derived.entries[C.e.id] || {}).alloc || []).map(a => `<li>${esc(pName(a.productId))} — ${fqP(a.qty, P(a.productId))}</li>`).join('') || `<li class="meta">${t('nothing')}</li>`}</ul>
+      <button type="button" class="btn" data-c="cooked">✓ ${t('Cooked')}</button>` : ''}`;
+  }
+  $('#cookBody').innerHTML = h; $('#cookBody').scrollTop = 0;
+  const nb = dlg.querySelector('[data-c=next]'); nb.textContent = page === pages.length - 1 ? t('Close') : page === pages.length - 2 ? t('Finish') + ' ›' : t('Next') + ' ›';
+  dlg.querySelector('[data-c=prev]').disabled = page === 0;
+  const cb = $('#cookBase'); if (cb) cb.oninput = () => { const b = parseAmt(cb.value); if (b > 0) { C.scale.base = b; const pos = cb.selectionStart; drawCook(); const n = $('#cookBase'); n.focus(); n.setSelectionRange(pos, pos); } };
+  drawTimers();
+}
+function drawTimers() {
+  if (!C) return;
+  const now = Date.now();
+  for (const tm of C.timers) if (!tm.done && tm.end <= now) { tm.done = true; beep(); toast(t('Timer done: {x}', { x: tm.label })); }
+  const el = $('#cookTimers'); if (!el) return;
+  el.innerHTML = C.timers.map((tm, i) => { const s = Math.max(0, Math.round((tm.end - now) / 1000)); return `<button type="button" class="chip ${tm.done ? 'on' : ''}" data-c="stoptimer" data-i="${i}">⏱ ${tm.done ? t('done') : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`} · ${esc(tm.label)} ×</button>`; }).join('');
+}
+function closeCook() { clearInterval(tick); tick = null; try { wake && wake.release(); } catch {} wake = null; C = null; closeDlg(); }
+dlg.addEventListener('click', async e => {
+  const b = e.target.closest('[data-c]'); if (!b || !C) return;
+  const k = b.dataset.c;
+  if (k === 'close') return closeCook();
+  if (k === 'next') { if (C.page === C.pages.length - 1) return closeCook(); C.page++; drawCook(); }
+  if (k === 'prev' && C.page > 0) { C.page--; drawCook(); }
+  if (k === 'tick') { const i = +b.dataset.k; b.checked ? C.ticked.add(i) : C.ticked.delete(i); }
+  if (k === 'less' || k === 'more') { C.scale.servings = Math.max(1, C.scale.servings + (k === 'more' ? 1 : -1)); drawCook(); }
+  if (k === 'timer') { C.timers.push({ label: b.dataset.l, end: Date.now() + Number(b.dataset.s) * 1000 }); drawTimers(); }
+  if (k === 'stoptimer') { C.timers.splice(+b.dataset.i, 1); drawTimers(); }
+  if (k === 'cooked') { const id = C.e.id; if (await act('plan.cook', { id })) { toast(t('Marked as cooked')); closeCook(); } }
+});
+document.addEventListener('visibilitychange', () => { if (!document.hidden && C) keepAwake(); });
+
 // Change how much of the main ingredient a planned meal uses; everything else follows.
 function baseDlg(id) {
   const e = ST.db.plan.find(x => x.id === id), r = R(e.recipeId);
@@ -683,6 +854,8 @@ document.addEventListener('click', async e => {
     case 'mv': act('plan.move', { id, dir: Number(el.dataset.d) }); break;
     case 'cook': cookDlg(id); break;
     case 'base': baseDlg(id); break;
+    case 'cookm': { const en = ST.db.plan.find(x => x.id === id); openCook(en.recipeId, id); break; }
+    case 'cookr': openCook(id, null); break;
     case 'rmmeal': act('plan.remove', { id }); break;
     case 'addstock': addStockDlg(); break;
     case 'scan': scanDlg(); break;

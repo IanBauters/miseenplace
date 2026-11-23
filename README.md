@@ -13,6 +13,10 @@ Runs as one small Docker container on the Synology NAS. Both phones (Android and
 - Each product can have a **minimum stock**: as soon as free stock drops below it, one pack goes on the shopping list.
 
 **Recipes**
+- Built the way you write them: first **all ingredients**, then **sections** (e.g. "For the soup", "For the pistou") with **steps**. Each step picks ingredients from the full list with its own amount and preparation ("1 tomato, large diced"); the builder shows what's left ("1 tomato left", "all used", "not in a step").
+- **Paste a recipe** as text (Dutch or English) and it is filled in for you: amounts, units, "1 small can (160 grams)", cloves, preparation notes, "to taste", sections and steps. Check, then save.
+- **Cook mode**: full screen, one step at a time, starting with a *mise en place* checklist. Each step shows its ingredients scaled to the meal, timer buttons for "50 minutes", and keeps the screen on. At the end, mark the meal as cooked.
+- "To taste" ingredients (salt, croutons) are never counted: they only need to be in the house, otherwise one pack goes on the list.
 - Normal recipes with fixed amounts, or recipes built around one **main ingredient**: other amounts are *parts* of it (1 part apples = same weight as the red cabbage) or *per 100 g* of it (1½ tbsp sugar per 100 g). The planned meal uses the main ingredient you have in stock; change it on the meal and everything scales.
 - Amounts like `1 1/2`, `1,5` or `½`; spoons (tbsp/tsp) converted with the product's grams per tablespoon.
 - Cloves, slices and stalks: a garlic bulb splits into cloves, so a recipe asks for 3 cloves and the pantry shows "1 pcs + 7 cloves".
